@@ -150,6 +150,11 @@ export interface HistoryDetail {
   };
 }
 
+export interface TranscriptChunk {
+  text: string;
+  offset: number; // start time in whole seconds
+}
+
 export interface ShadowItem {
   en: string;
   pt: string;

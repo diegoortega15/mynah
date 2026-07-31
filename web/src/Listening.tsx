@@ -3,9 +3,46 @@ import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
 import { useToday, useRefreshDay } from './queries.js';
-import type { User, Dialogue, DialogueLine } from './types';
+import type { User, Dialogue, DialogueLine, TranscriptChunk } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+// --- YouTube IFrame Player API (loaded once, lazily) ---
+interface YTPlayer {
+  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
+  playVideo: () => void;
+  getCurrentTime: () => number;
+  destroy: () => void;
+}
+interface YTApi {
+  Player: new (el: HTMLElement | string, opts: unknown) => YTPlayer;
+}
+let ytApiPromise: Promise<YTApi> | null = null;
+function loadYouTubeApi(): Promise<YTApi> {
+  const w = window as unknown as { YT?: YTApi; onYouTubeIframeAPIReady?: () => void };
+  if (w.YT?.Player) return Promise.resolve(w.YT);
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve) => {
+    const prev = w.onYouTubeIframeAPIReady;
+    w.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      resolve((window as unknown as { YT: YTApi }).YT);
+    };
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  });
+  return ytApiPromise;
+}
+
+// Seconds → m:ss (or h:mm:ss for long videos).
+const fmtTime = (s: number) => {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  const ss = String(sec).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+};
 
 const THEMES = ['Daily standup', 'Negotiating a deadline', 'Job interview', 'Client kickoff', 'Giving feedback'];
 
@@ -239,9 +276,20 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [videoId, setVideoId] = useState<string | null>(null);
-  const [chunks, setChunks] = useState<string[] | null>(null);
+  const [chunks, setChunks] = useState<TranscriptChunk[] | null>(null);
   const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
+  const [activeIdx, setActiveIdx] = useState(-1);
+
+  const playerElRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<YTPlayer | null>(null);
+  const chunksRef = useRef<TranscriptChunk[] | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const activeRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    chunksRef.current = chunks;
+  }, [chunks]);
 
   async function load() {
     if (!url.trim()) return;
@@ -249,6 +297,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     setErr('');
     setChunks(null);
     setVideoId(null);
+    setActiveIdx(-1);
     setSaved({});
     try {
       const res = await api.youtube(user.id, { url: url.trim() });
@@ -260,6 +309,65 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Create the player when a video loads; poll its time to highlight the line.
+  useEffect(() => {
+    if (!videoId || !playerElRef.current) return;
+    let cancelled = false;
+    let poll: ReturnType<typeof setInterval> | undefined;
+    loadYouTubeApi().then((YT) => {
+      if (cancelled || !playerElRef.current) return;
+      playerRef.current = new YT.Player(playerElRef.current, {
+        videoId,
+        playerVars: { playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => {
+            poll = setInterval(() => {
+              const p = playerRef.current;
+              const cs = chunksRef.current;
+              if (!p?.getCurrentTime || !cs?.length) return;
+              const t = p.getCurrentTime();
+              let idx = -1;
+              for (let i = 0; i < cs.length; i++) {
+                if (cs[i].offset <= t + 0.3) idx = i;
+                else break;
+              }
+              setActiveIdx((prev) => (prev === idx ? prev : idx));
+            }, 500);
+          },
+        },
+      });
+    });
+    return () => {
+      cancelled = true;
+      if (poll) clearInterval(poll);
+      try {
+        playerRef.current?.destroy();
+      } catch {
+        /* already gone */
+      }
+      playerRef.current = null;
+    };
+  }, [videoId]);
+
+  // Keep the active line visible inside the transcript box (scrolls the box only).
+  useEffect(() => {
+    const box = listRef.current;
+    const li = activeRef.current;
+    if (!box || !li) return;
+    const bt = box.getBoundingClientRect();
+    const lt = li.getBoundingClientRect();
+    if (lt.top < bt.top || lt.bottom > bt.bottom) {
+      box.scrollTop += lt.top - bt.top - box.clientHeight / 2 + li.clientHeight / 2;
+    }
+  }, [activeIdx]);
+
+  function seek(offset: number) {
+    const p = playerRef.current;
+    if (!p) return;
+    p.seekTo(offset, true);
+    p.playVideo();
   }
 
   async function save(text: string, idx: number) {
@@ -296,38 +404,51 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       </section>
 
       {videoId && (
-        <section className="card">
+        <section className="card yt-player-card">
           <div className="yt-frame">
-            <iframe
-              src={`https://www.youtube.com/embed/${videoId}`}
-              title="YouTube"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+            <div key={videoId} ref={playerElRef} />
           </div>
-        </section>
-      )}
 
-      {chunks && (
-        <section className="card">
-          <h2>Transcrição · {chunks.length} trechos</h2>
-          <p className="muted small">Toque em “+ card” para salvar uma frase no seu vocabulário.</p>
-          <ul className="dialogue">
-            {chunks.map((c, i) => (
-              <li key={i} className="line a">
-                <div className="linebody"><p className="en">{c}</p></div>
-                <div className="lineact">
-                  <button
-                    className="ghost mini"
-                    disabled={saved[i] === true || saved[i] === 'saving'}
-                    onClick={() => save(c, i)}
-                  >
-                    {saved[i] === true ? '✓' : saved[i] === 'saving' ? '…' : '+ card'}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {chunks && (
+            <>
+              <div className="row between yt-transcript-head">
+                <h2>Transcrição</h2>
+                <span className="muted small">{chunks.length} trechos · toque no tempo p/ pular</span>
+              </div>
+              <ul className="dialogue yt-transcript" ref={listRef}>
+                {chunks.map((c, i) => {
+                  const isActive = i === activeIdx;
+                  return (
+                    <li
+                      key={i}
+                      ref={isActive ? activeRef : null}
+                      className={`line yt-line ${isActive ? 'active' : ''}`}
+                    >
+                      <button
+                        className="ts-btn"
+                        onClick={() => seek(c.offset)}
+                        title="Pular para este ponto do vídeo"
+                      >
+                        {fmtTime(c.offset)}
+                      </button>
+                      <div className="linebody">
+                        <p className="en">{c.text}</p>
+                      </div>
+                      <div className="lineact">
+                        <button
+                          className="ghost mini"
+                          disabled={saved[i] === true || saved[i] === 'saving'}
+                          onClick={() => save(c.text, i)}
+                        >
+                          {saved[i] === true ? '✓' : saved[i] === 'saving' ? '…' : '+ card'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
         </section>
       )}
     </>

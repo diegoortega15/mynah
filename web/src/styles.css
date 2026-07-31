@@ -370,6 +370,17 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
 .yt-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
 /* Listening dialogue */
+/* YouTube: transcript scrolls in its own box so the video stays put (great on mobile). */
+.yt-transcript-head { margin-top: 12px; align-items: baseline; }
+.yt-transcript { max-height: 46vh; overflow-y: auto; margin-top: 4px; border-top: 1px solid var(--border); }
+.yt-transcript .line { padding: 8px; border-radius: 6px; scroll-margin: 8px; }
+.yt-line.active { background: rgba(124, 108, 255, 0.16); }
+.ts-btn {
+  flex: none; align-self: flex-start; font-variant-numeric: tabular-nums;
+  font-size: 0.75rem; color: var(--accent2); background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; cursor: pointer;
+}
+.ts-btn:hover { border-color: var(--accent); color: var(--text); }
 .dialogue { list-style: none; padding: 0; margin: 12px 0 0; }
 .line { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .spk {

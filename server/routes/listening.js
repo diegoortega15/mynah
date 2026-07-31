@@ -9,21 +9,30 @@ function extractVideoId(url = '') {
   return /^[A-Za-z0-9_-]{11}$/.test(url.trim()) ? url.trim() : null;
 }
 
-// Join short caption segments into readable chunks.
+// Join short caption segments into readable chunks, keeping each chunk's start
+// time (in whole seconds) so the UI can show timestamps and seek the video.
 function groupSegments(segs, maxLen = 170) {
+  // youtube-transcript returns offset/duration in ms (srv3 caption format) or in
+  // seconds (classic format). Detect by duration: a caption never lasts 60s+.
+  const looksMs = segs.some((s) => Number(s.duration) > 60);
+  const toSec = (v) => Math.max(0, Math.floor(Number(v || 0) / (looksMs ? 1000 : 1)));
+
   const chunks = [];
   let cur = '';
+  let curOffset = 0;
   for (const s of segs) {
     const t = String(s.text || '').replace(/\s+/g, ' ').trim();
     if (!t) continue;
     if (cur && (cur + ' ' + t).length > maxLen) {
-      chunks.push(cur.trim());
+      chunks.push({ text: cur.trim(), offset: curOffset });
       cur = t;
+      curOffset = toSec(s.offset);
     } else {
+      if (!cur) curOffset = toSec(s.offset);
       cur = (cur + ' ' + t).trim();
     }
   }
-  if (cur) chunks.push(cur.trim());
+  if (cur) chunks.push({ text: cur.trim(), offset: curOffset });
   return chunks;
 }
 

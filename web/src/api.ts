@@ -15,6 +15,7 @@ import type {
   Rating,
   ShadowItem,
   TutorMessage,
+  TranscriptChunk,
   BlockKey,
 } from './types';
 
@@ -93,7 +94,10 @@ export const api = {
   surpriseDialogue: (uid: number) =>
     req<Dialogue>(`/api/users/${uid}/listening/surprise`, { method: 'POST', body: {} }),
   youtube: (uid: number, body: { url: string }) =>
-    req<{ videoId: string; chunks: string[] }>(`/api/users/${uid}/youtube`, { method: 'POST', body }),
+    req<{ videoId: string; chunks: TranscriptChunk[] }>(`/api/users/${uid}/youtube`, {
+      method: 'POST',
+      body,
+    }),
   listDialogues: (uid: number) => req<Dialogue[]>(`/api/users/${uid}/listening`),
   deleteDialogue: (id: number) => req<Ok>(`/api/dialogues/${id}`, { method: 'DELETE' }),
   savePhrase: (uid: number, body: { en: string; pt?: string; context?: string }) =>
