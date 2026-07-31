@@ -5,8 +5,7 @@
 <h1 align="center">Mynah</h1>
 
 <p align="center">
-  <!-- Troque <seu-usuario> pelo seu usuário/organização do GitHub após publicar. -->
-  <img alt="CI" src="https://github.com/<seu-usuario>/mynah/actions/workflows/ci.yml/badge.svg" />
+  <img alt="CI" src="https://github.com/diegoortega15/mynah/actions/workflows/ci.yml/badge.svg" />
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" />
   <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A518-3c873a.svg" />
   <img alt="React" src="https://img.shields.io/badge/React-18-61dafb.svg" />
@@ -131,7 +130,7 @@ flowchart TD
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/<seu-usuario>/mynah.git
+git clone https://github.com/diegoortega15/mynah.git
 cd mynah
 
 # 2. Backend (porta 3001)
