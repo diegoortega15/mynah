@@ -27,8 +27,8 @@ export default function VoiceSettings() {
         escolha uma com <strong>"Natural"</strong> no nome (ex: "Microsoft Aria Online (Natural)").
       </p>
 
-      <label>Voz</label>
-      <select value={voiceURI} onChange={(e) => setVoiceURI(e.target.value)}>
+      <label htmlFor="vs-voice">Voz</label>
+      <select id="vs-voice" value={voiceURI} onChange={(e) => setVoiceURI(e.target.value)}>
         <option value="">Automática (melhor disponível)</option>
         {natural.length > 0 && (
           <optgroup label="Naturais (recomendadas)">
@@ -44,8 +44,9 @@ export default function VoiceSettings() {
         </optgroup>
       </select>
 
-      <label>Velocidade: {rate.toFixed(2)}×</label>
+      <label htmlFor="vs-rate">Velocidade: {rate.toFixed(2)}×</label>
       <input
+        id="vs-rate"
         type="range"
         min="0.6"
         max="1.1"

@@ -36,16 +36,17 @@ export default function Onboarding({
         <h1>Criar perfil</h1>
         <p className="muted">Seu plano de 90 dias começa hoje.</p>
 
-        <label>Nome</label>
+        <label htmlFor="ob-name">Nome</label>
         <input
+          id="ob-name"
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Seu nome"
         />
 
-        <label>Nível de inglês</label>
-        <div className="chips">
+        <span className="field-label" id="ob-level">Nível de inglês</span>
+        <div className="chips" role="group" aria-labelledby="ob-level">
           {LEVELS.map((l) => (
             <button
               type="button"

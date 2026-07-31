@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
@@ -54,16 +54,18 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [past, setPast] = useState<Dialogue[]>([]);
   const [showPt, setShowPt] = useState(false);
 
-  async function loadPast() {
+  const loadPast = useCallback(async () => {
     try {
       setPast(await api.listDialogues(user.id));
-    } catch {}
-  }
+    } catch {
+      /* lista opcional */
+    }
+  }, [user.id]);
   useEffect(() => {
     stop();
     loadPast();
     return () => stop();
-  }, [user.id]);
+  }, [loadPast, stop]);
 
   async function run(fn: () => Promise<Dialogue>, label: string) {
     stop();

@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import { useStats, useRefreshDay } from './queries.js';
@@ -22,12 +22,12 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
   const { data: stats } = useStats(user.id);
   const refreshDay = useRefreshDay(user.id);
 
-  async function loadDecks() {
+  const loadDecks = useCallback(async () => {
     setDecks(await api.listDecks(user.id));
-  }
+  }, [user.id]);
   useEffect(() => {
     loadDecks();
-  }, [user.id]);
+  }, [loadDecks]);
 
   async function generate(t?: string) {
     const th = (t ?? theme).trim();
@@ -159,7 +159,7 @@ function ReviewSession({
   useEffect(() => {
     setRevealed(false);
     if (card && ttsSupported) speak(card.text_en);
-  }, [card?.card_id]);
+  }, [card, ttsSupported, speak]);
 
   if (!card) return null;
 

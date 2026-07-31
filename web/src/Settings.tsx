@@ -76,8 +76,8 @@ export default function Settings({
       <section className="card">
         <h2>Dados</h2>
 
-        <label>Avatar</label>
-        <div className="avatar-grid">
+        <span className="field-label" id="set-avatar">Avatar</span>
+        <div className="avatar-grid" role="group" aria-labelledby="set-avatar">
           {AVATARS.map((a) => (
             <button key={a} className={`av ${avatar === a ? 'sel' : ''}`} onClick={() => setAvatar(a)}>
               {a}
@@ -85,11 +85,11 @@ export default function Settings({
           ))}
         </div>
 
-        <label>Nome</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} />
+        <label htmlFor="set-name">Nome</label>
+        <input id="set-name" value={name} onChange={(e) => setName(e.target.value)} />
 
-        <label>Nível</label>
-        <div className="chips">
+        <span className="field-label" id="set-level">Nível</span>
+        <div className="chips" role="group" aria-labelledby="set-level">
           {LEVELS.map((l) => (
             <button key={l} className={`chip ${level === l ? 'sel' : ''}`} onClick={() => setLevel(l)}>
               {l}
@@ -97,9 +97,14 @@ export default function Settings({
           ))}
         </div>
 
-        <label>Início do plano (Dia 1)</label>
+        <label htmlFor="set-start">Início do plano (Dia 1)</label>
         <div className="row">
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <input
+            id="set-start"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
           <button
             className="ghost"
             onClick={() => setStartDate(new Date().toLocaleDateString('en-CA'))}

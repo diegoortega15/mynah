@@ -490,6 +490,10 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
 .help-intro { margin: 12px 0 4px; color: var(--muted); line-height: 1.5; }
 .help-topic li strong { color: var(--text); }
 .settings label { display: block; font-size: 0.85rem; color: var(--muted); margin: 14px 0 6px; }
+/* Label for a group of buttons (avatar/level chips) — same look as a form label,
+   but as a <span> so it can label the group via aria-labelledby (a11y). */
+.field-label { display: block; font-size: 0.85rem; color: var(--muted); margin: 14px 0 6px; }
+.form .field-label { margin: 8px 0 6px; }
 .avatar-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .av {
   width: 46px; height: 46px; font-size: 1.5rem;

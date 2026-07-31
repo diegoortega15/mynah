@@ -144,8 +144,8 @@ export default function AiSettings() {
         <strong>{os}</strong> (a chamada ao CLI se ajusta sozinha).
       </p>
 
-      <label>Provedor</label>
-      <div className="chips">
+      <span className="field-label" id="ai-provider">Provedor</span>
+      <div className="chips" role="group" aria-labelledby="ai-provider">
         {PROVIDERS.map((p) => (
           <button
             key={p.key}
@@ -165,15 +165,15 @@ export default function AiSettings() {
       </p>
 
       {active.fields.map((f) => (
-        <div key={f.k}>
-          <label>{f.label}</label>
+        <label key={f.k}>
+          {f.label}
           <input
             type={f.secret ? 'password' : 'text'}
             placeholder={f.secret && cfg[ck].hasKey ? '•••••• (chave salva — deixe em branco p/ manter)' : f.ph}
             value={cfg[ck][f.k] ?? ''}
             onChange={(e) => setField(f.k, e.target.value)}
           />
-        </div>
+        </label>
       ))}
 
       <div className="row end">

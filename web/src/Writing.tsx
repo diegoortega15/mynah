@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import DayBanner from './DayBanner.jsx';
 import { useToday, useRefreshDay } from './queries.js';
@@ -23,14 +23,16 @@ export default function Writing({ user }: { user: User }) {
   const { data: today } = useToday(user.id);
   const refreshDay = useRefreshDay(user.id);
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     try {
       setHistory(await api.writingHistory(user.id));
-    } catch {}
-  }
+    } catch {
+      /* histórico é opcional */
+    }
+  }, [user.id]);
   useEffect(() => {
     loadHistory();
-  }, [user.id]);
+  }, [loadHistory]);
 
   async function submit() {
     if (!text.trim()) return;
@@ -59,8 +61,8 @@ export default function Writing({ user }: { user: User }) {
       />
 
       <section className="card">
-        <label className="muted small">Tema (opcional)</label>
-        <div className="chips">
+        <span className="muted small" id="wr-theme">Tema (opcional)</span>
+        <div className="chips" role="group" aria-labelledby="wr-theme">
           {PROMPTS.map((p) => (
             <button key={p} className={`chip ${prompt === p ? 'sel' : ''}`} onClick={() => setPrompt(p)}>
               {p.length > 34 ? p.slice(0, 32) + '…' : p}
