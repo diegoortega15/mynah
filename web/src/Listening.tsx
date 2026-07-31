@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
@@ -53,6 +53,25 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [err, setErr] = useState('');
   const [past, setPast] = useState<Dialogue[]>([]);
   const [showPt, setShowPt] = useState(false);
+  const dialogueRef = useRef<HTMLElement | null>(null);
+  const scrollPendingRef = useRef(false);
+
+  // Reopen a saved dialogue; the actual scroll happens after it renders (below).
+  function openPast(d: Dialogue) {
+    stop();
+    setDialogue(d);
+    setShowPt(false);
+    scrollPendingRef.current = true;
+  }
+
+  // Once the reopened dialogue is in the DOM, bring it into view — it renders
+  // above the list, so without this it can feel like nothing happened.
+  useEffect(() => {
+    if (scrollPendingRef.current && dialogue) {
+      scrollPendingRef.current = false;
+      dialogueRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [dialogue]);
 
   const loadPast = useCallback(async () => {
     try {
@@ -137,7 +156,7 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       </section>
 
       {dialogue && (
-        <section className="card">
+        <section className="card" ref={dialogueRef}>
           <div className="row between">
             <h2>{dialogue.title}</h2>
             <div className="row">
@@ -194,7 +213,7 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
           <ul className="deck-list">
             {past.map((d) => (
               <li key={d.id}>
-                <button className="linklike" onClick={() => { stop(); setDialogue(d); setShowPt(false); }}>{d.title}</button>
+                <button className="linklike" onClick={() => openPast(d)}>{d.title}</button>
                 <span className="row" style={{ gap: 8 }}>
                   <span className="muted small">{d.lines.length} falas</span>
                   <button
