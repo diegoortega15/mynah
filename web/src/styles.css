@@ -358,6 +358,7 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
 .errors li { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .wrong { color: var(--again); text-decoration: line-through; }
 .right { color: var(--good); font-weight: 600; }
+.your-text { white-space: pre-wrap; background: var(--surface2); padding: 12px; border-radius: 10px; margin: 4px 0; }
 .hist { list-style: none; padding: 0; }
 .hist li { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .hist p { margin: 4px 0 0; }
