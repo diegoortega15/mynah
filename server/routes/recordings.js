@@ -48,7 +48,7 @@ export default async function recordingsRoutes(app) {
   );
 
   // Save the transcript captured while recording.
-  app.post('/api/recordings/:id/transcript', (req, reply) => {
+  app.post('/api/recordings/:id/transcript', (req) => {
     const { transcript } = req.body ?? {};
     db.prepare('UPDATE recordings SET transcript = ? WHERE id = ?')
       .run(String(transcript || ''), req.params.id);
