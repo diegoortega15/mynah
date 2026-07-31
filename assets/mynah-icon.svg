@@ -1,0 +1,16 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mynah icon">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c6cff"/>
+      <stop offset="1" stop-color="#34d3ab"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="128" height="128" rx="32" fill="url(#g)"/>
+  <polygon points="32,77 14,82 35,91" fill="#16192b"/>
+  <ellipse cx="56" cy="72" rx="27" ry="19" fill="#16192b" transform="rotate(-16 56 72)"/>
+  <ellipse cx="60" cy="70" rx="15" ry="8" fill="#2c3352" transform="rotate(-16 60 70)"/>
+  <circle cx="77" cy="53" r="15" fill="#16192b"/>
+  <ellipse cx="80" cy="55" rx="9" ry="6" fill="#ffce5a"/>
+  <circle cx="82" cy="52" r="2.8" fill="#16192b"/>
+  <polygon points="91,49 109,55 91,61" fill="#ffce5a"/>
+</svg>

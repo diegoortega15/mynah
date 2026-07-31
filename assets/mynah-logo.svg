@@ -1,0 +1,20 @@
+<svg width="470" height="128" viewBox="0 0 470 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mynah logo">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c6cff"/>
+      <stop offset="1" stop-color="#34d3ab"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(8,16) scale(0.75)">
+    <rect x="0" y="0" width="128" height="128" rx="32" fill="url(#g)"/>
+    <polygon points="32,77 14,82 35,91" fill="#16192b"/>
+    <ellipse cx="56" cy="72" rx="27" ry="19" fill="#16192b" transform="rotate(-16 56 72)"/>
+    <ellipse cx="60" cy="70" rx="15" ry="8" fill="#2c3352" transform="rotate(-16 60 70)"/>
+    <circle cx="77" cy="53" r="15" fill="#16192b"/>
+    <ellipse cx="80" cy="55" rx="9" ry="6" fill="#ffce5a"/>
+    <circle cx="82" cy="52" r="2.8" fill="#16192b"/>
+    <polygon points="91,49 109,55 91,61" fill="#ffce5a"/>
+  </g>
+  <text x="126" y="82" font-family="'Segoe UI',system-ui,-apple-system,sans-serif" font-size="58" font-weight="700" fill="#1a1e33" letter-spacing="-1">Mynah</text>
+  <text x="128" y="104" font-family="'Segoe UI',system-ui,sans-serif" font-size="16" font-weight="500" fill="#7c6cff" letter-spacing="3">FALE COMO UM NATIVO</text>
+</svg>
