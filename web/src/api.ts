@@ -16,6 +16,7 @@ import type {
   ShadowItem,
   TutorMessage,
   TranscriptChunk,
+  SavedYoutubeVideo,
   BlockKey,
 } from './types';
 
@@ -94,10 +95,17 @@ export const api = {
   surpriseDialogue: (uid: number) =>
     req<Dialogue>(`/api/users/${uid}/listening/surprise`, { method: 'POST', body: {} }),
   youtube: (uid: number, body: { url: string }) =>
-    req<{ videoId: string; chunks: TranscriptChunk[] }>(`/api/users/${uid}/youtube`, {
-      method: 'POST',
-      body,
-    }),
+    req<{ id: number; videoId: string; title: string | null; chunks: TranscriptChunk[] }>(
+      `/api/users/${uid}/youtube`,
+      { method: 'POST', body }
+    ),
+  listYoutubeVideos: (uid: number) =>
+    req<SavedYoutubeVideo[]>(`/api/users/${uid}/youtube-videos`),
+  getYoutubeVideo: (uid: number, rowId: number) =>
+    req<{ videoId: string; title: string | null; chunks: TranscriptChunk[] }>(
+      `/api/users/${uid}/youtube-videos/${rowId}`
+    ),
+  deleteYoutubeVideo: (rowId: number) => req<Ok>(`/api/youtube-videos/${rowId}`, { method: 'DELETE' }),
   listDialogues: (uid: number) => req<Dialogue[]>(`/api/users/${uid}/listening`),
   deleteDialogue: (id: number) => req<Ok>(`/api/dialogues/${id}`, { method: 'DELETE' }),
   savePhrase: (uid: number, body: { en: string; pt?: string; context?: string }) =>

@@ -384,6 +384,7 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
 .tx-line { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
 .tx-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
 .tx-toggle input { accent-color: var(--accent); }
+.yt-title { margin: 0 0 10px; font-size: 1.05rem; line-height: 1.3; }
 .dialogue { list-style: none; padding: 0; margin: 12px 0 0; }
 .line { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .spk {

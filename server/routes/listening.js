@@ -36,6 +36,21 @@ function groupSegments(segs, maxLen = 170) {
   return chunks;
 }
 
+// Best-effort video title via YouTube's public oEmbed endpoint (no API key).
+async function fetchTitle(vid) {
+  try {
+    const r = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.title || null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function listeningRoutes(app) {
   // Generate a dialogue for a theme and store it.
   app.post('/api/users/:id/listening/generate', async (req, reply) => {
@@ -99,7 +114,50 @@ export default async function listeningRoutes(app) {
     }
     const chunks = groupSegments(segs);
     if (!chunks.length) return reply.code(502).send({ error: 'Transcrição vazia.' });
-    return { videoId: vid, chunks };
+
+    // Save (or refresh) the video for this user so it can be reopened later.
+    const title = await fetchTitle(vid);
+    const row = db
+      .prepare(
+        `INSERT INTO youtube_videos (user_id, video_id, title, chunks_json)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, video_id)
+         DO UPDATE SET title = excluded.title, chunks_json = excluded.chunks_json, created_at = datetime('now')
+         RETURNING id`
+      )
+      .get(req.params.id, vid, title, JSON.stringify(chunks));
+
+    return { id: row.id, videoId: vid, title, chunks };
+  });
+
+  // List a user's watched YouTube videos.
+  app.get('/api/users/:id/youtube-videos', (req) => {
+    const rows = db
+      .prepare(
+        'SELECT id, video_id, title, created_at FROM youtube_videos WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30'
+      )
+      .all(req.params.id);
+    return rows.map((r) => ({
+      id: r.id,
+      videoId: r.video_id,
+      title: r.title,
+      created_at: r.created_at,
+    }));
+  });
+
+  // Reopen a saved video (transcript served from cache — instant, no re-fetch).
+  app.get('/api/users/:id/youtube-videos/:rowId', (req, reply) => {
+    const r = db
+      .prepare('SELECT video_id, title, chunks_json FROM youtube_videos WHERE id = ? AND user_id = ?')
+      .get(req.params.rowId, req.params.id);
+    if (!r) return reply.code(404).send({ error: 'vídeo não encontrado' });
+    return { videoId: r.video_id, title: r.title, chunks: JSON.parse(r.chunks_json) };
+  });
+
+  // Delete a saved video.
+  app.delete('/api/youtube-videos/:rowId', (req) => {
+    db.prepare('DELETE FROM youtube_videos WHERE id = ?').run(req.params.rowId);
+    return { ok: true };
   });
 
   // List a user's dialogues.

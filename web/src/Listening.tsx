@@ -3,7 +3,7 @@ import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
 import { useToday, useRefreshDay } from './queries.js';
-import type { User, Dialogue, DialogueLine, TranscriptChunk } from './types';
+import type { User, Dialogue, DialogueLine, TranscriptChunk, SavedYoutubeVideo } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -43,6 +43,10 @@ const fmtTime = (s: number) => {
   const ss = String(sec).padStart(2, '0');
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 };
+
+// How many lines ahead of the current one to translate in advance (so the PT is
+// already ready by the time playback reaches each line).
+const LOOKAHEAD = 2;
 
 const THEMES = ['Daily standup', 'Negotiating a deadline', 'Job interview', 'Client kickoff', 'Giving feedback'];
 
@@ -276,6 +280,8 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [videoTitle, setVideoTitle] = useState<string | null>(null);
+  const [savedVideos, setSavedVideos] = useState<SavedYoutubeVideo[]>([]);
   const [chunks, setChunks] = useState<TranscriptChunk[] | null>(null);
   const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
@@ -283,6 +289,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [tx, setTx] = useState<Record<number, string>>({}); // translations by chunk index
   const [txLoading, setTxLoading] = useState<Record<number, boolean>>({});
   const [autoTx, setAutoTx] = useState(false); // translate the active line as it plays
+  const [manual, setManual] = useState<Record<number, boolean>>({}); // lines the user revealed by hand
 
   const playerElRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -295,26 +302,64 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     chunksRef.current = chunks;
   }, [chunks]);
 
+  const loadSavedVideos = useCallback(async () => {
+    try {
+      setSavedVideos(await api.listYoutubeVideos(user.id));
+    } catch {
+      /* lista opcional */
+    }
+  }, [user.id]);
+  useEffect(() => {
+    loadSavedVideos();
+  }, [loadSavedVideos]);
+
+  // Reset the per-video UI state (shared by load() and openSaved()).
+  function resetVideoState() {
+    setActiveIdx(-1);
+    setSaved({});
+    setTx({});
+    setTxLoading({});
+    setManual({});
+    txReq.current = new Set();
+  }
+
   async function load() {
     if (!url.trim()) return;
     setBusy(true);
     setErr('');
     setChunks(null);
     setVideoId(null);
-    setActiveIdx(-1);
-    setSaved({});
-    setTx({});
-    setTxLoading({});
-    txReq.current = new Set();
+    setVideoTitle(null);
+    resetVideoState();
     try {
       const res = await api.youtube(user.id, { url: url.trim() });
-      setVideoId(res.videoId);
+      setVideoTitle(res.title);
       setChunks(res.chunks);
+      setVideoId(res.videoId);
       api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
+      loadSavedVideos();
     } catch (e) {
       setErr(errMsg(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Reopen a saved video from cache (instant — transcript comes from the DB).
+  async function openSaved(v: SavedYoutubeVideo) {
+    setErr('');
+    setChunks(null);
+    setVideoId(null);
+    setVideoTitle(null);
+    resetVideoState();
+    try {
+      const res = await api.getYoutubeVideo(user.id, v.id);
+      setVideoTitle(res.title);
+      setChunks(res.chunks);
+      setVideoId(res.videoId);
+      api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
+    } catch (e) {
+      setErr(errMsg(e));
     }
   }
 
@@ -395,26 +440,27 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     }
   }
 
-  // Per-line 🌐: show the translation, or hide it if already shown.
+  // Per-line 🌐: reveal/hide the translation by hand (keeps the cached text).
   function toggleTx(i: number, text: string) {
-    if (tx[i] !== undefined) {
-      setTx((t) => {
-        const n = { ...t };
-        delete n[i];
-        return n;
-      });
-      return;
+    const willShow = !manual[i];
+    setManual((m) => ({ ...m, [i]: willShow }));
+    if (willShow && !txReq.current.has(i)) {
+      txReq.current.add(i);
+      fetchTx(i, text);
     }
-    txReq.current.add(i);
-    fetchTx(i, text);
   }
 
-  // While playing with the toggle on, translate the current line automatically.
+  // With the toggle on, keep the current line and the next few translated ahead
+  // of time, so the PT is ready by the time playback reaches each line.
   useEffect(() => {
-    if (!autoTx || activeIdx < 0 || !chunks) return;
-    if (txReq.current.has(activeIdx)) return;
-    txReq.current.add(activeIdx);
-    fetchTx(activeIdx, chunks[activeIdx].text);
+    if (!autoTx || !chunks) return;
+    const base = activeIdx < 0 ? 0 : activeIdx;
+    for (let i = base; i <= base + LOOKAHEAD && i < chunks.length; i++) {
+      if (!txReq.current.has(i)) {
+        txReq.current.add(i);
+        fetchTx(i, chunks[i].text);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIdx, autoTx, chunks]);
 
@@ -434,8 +480,9 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       <section className="card">
         <h2>Ouvir um vídeo do YouTube</h2>
         <p className="muted small">
-          Cole a URL de um vídeo <strong>com legendas</strong>. Você ouve o áudio real e pode salvar
-          frases (traduzidas na hora).
+          Cole a URL de um vídeo <strong>com legendas</strong>. O vídeo fica fixo e a transcrição
+          acompanha — dá para traduzir cada fala e salvar frases. Os vídeos ficam guardados aqui
+          embaixo.
         </p>
         <div className="row gen">
           <input
@@ -453,6 +500,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
 
       {videoId && (
         <section className="card yt-player-card">
+          {videoTitle && <h2 className="yt-title">{videoTitle}</h2>}
           <div className="yt-frame">
             <div key={videoId} ref={playerElRef} />
           </div>
@@ -488,8 +536,8 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                       </button>
                       <div className="linebody">
                         <p className="en">{c.text}</p>
-                        {(tx[i] !== undefined || txLoading[i]) && (
-                          <p className="tx-line">{txLoading[i] ? 'traduzindo…' : tx[i]}</p>
+                        {(manual[i] || (autoTx && i === activeIdx)) && (
+                          <p className="tx-line">{tx[i] ?? 'traduzindo…'}</p>
                         )}
                       </div>
                       <div className="lineact">
@@ -498,7 +546,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                           title="Traduzir esta fala"
                           onClick={() => toggleTx(i, c.text)}
                         >
-                          {txLoading[i] ? '…' : tx[i] !== undefined ? '🌐✓' : '🌐'}
+                          {txLoading[i] && tx[i] === undefined ? '…' : manual[i] ? '🌐✓' : '🌐'}
                         </button>
                         <button
                           className="ghost mini"
@@ -514,6 +562,31 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
               </ul>
             </>
           )}
+        </section>
+      )}
+
+      {savedVideos.length > 0 && (
+        <section className="card">
+          <h2>Vídeos anteriores</h2>
+          <ul className="deck-list">
+            {savedVideos.map((v) => (
+              <li key={v.id}>
+                <button className="linklike" onClick={() => openSaved(v)}>
+                  {v.title || v.videoId}
+                </button>
+                <button
+                  className="ghost mini del"
+                  title="Remover vídeo"
+                  onClick={async () => {
+                    await api.deleteYoutubeVideo(v.id).catch(() => {});
+                    loadSavedVideos();
+                  }}
+                >
+                  🗑
+                </button>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </>

@@ -92,6 +92,17 @@ CREATE TABLE IF NOT EXISTS recordings (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Watched YouTube videos (transcript cached so they reopen instantly)
+CREATE TABLE IF NOT EXISTS youtube_videos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id    TEXT NOT NULL,
+  title       TEXT,
+  chunks_json TEXT NOT NULL,                  -- [{text, offset}]
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, video_id)
+);
+
 -- Daily progress: which of the 4 blocks were done each day (per user)
 CREATE TABLE IF NOT EXISTS sessions (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,

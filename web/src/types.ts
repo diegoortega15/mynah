@@ -155,6 +155,13 @@ export interface TranscriptChunk {
   offset: number; // start time in whole seconds
 }
 
+export interface SavedYoutubeVideo {
+  id: number;
+  videoId: string;
+  title: string | null;
+  created_at: string;
+}
+
 export interface ShadowItem {
   en: string;
   pt: string;
