@@ -280,12 +280,16 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [tx, setTx] = useState<Record<number, string>>({}); // translations by chunk index
+  const [txLoading, setTxLoading] = useState<Record<number, boolean>>({});
+  const [autoTx, setAutoTx] = useState(false); // translate the active line as it plays
 
   const playerElRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const chunksRef = useRef<TranscriptChunk[] | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const activeRef = useRef<HTMLLIElement | null>(null);
+  const txReq = useRef<Set<number>>(new Set()); // indices already requested (avoid refetch)
 
   useEffect(() => {
     chunksRef.current = chunks;
@@ -299,6 +303,9 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     setVideoId(null);
     setActiveIdx(-1);
     setSaved({});
+    setTx({});
+    setTxLoading({});
+    txReq.current = new Set();
     try {
       const res = await api.youtube(user.id, { url: url.trim() });
       setVideoId(res.videoId);
@@ -370,6 +377,47 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     p.playVideo();
   }
 
+  // Translate one chunk (once) and cache it.
+  async function fetchTx(i: number, text: string) {
+    if (tx[i] !== undefined || txLoading[i]) return;
+    setTxLoading((l) => ({ ...l, [i]: true }));
+    try {
+      const { pt } = await api.translate(text);
+      setTx((t) => ({ ...t, [i]: pt }));
+    } catch {
+      /* tradução é opcional */
+    } finally {
+      setTxLoading((l) => {
+        const n = { ...l };
+        delete n[i];
+        return n;
+      });
+    }
+  }
+
+  // Per-line 🌐: show the translation, or hide it if already shown.
+  function toggleTx(i: number, text: string) {
+    if (tx[i] !== undefined) {
+      setTx((t) => {
+        const n = { ...t };
+        delete n[i];
+        return n;
+      });
+      return;
+    }
+    txReq.current.add(i);
+    fetchTx(i, text);
+  }
+
+  // While playing with the toggle on, translate the current line automatically.
+  useEffect(() => {
+    if (!autoTx || activeIdx < 0 || !chunks) return;
+    if (txReq.current.has(activeIdx)) return;
+    txReq.current.add(activeIdx);
+    fetchTx(activeIdx, chunks[activeIdx].text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIdx, autoTx, chunks]);
+
   async function save(text: string, idx: number) {
     setSaved((s) => ({ ...s, [idx]: 'saving' }));
     try {
@@ -413,7 +461,14 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
             <>
               <div className="row between yt-transcript-head">
                 <h2>Transcrição</h2>
-                <span className="muted small">{chunks.length} trechos · toque no tempo p/ pular</span>
+                <label className="tx-toggle muted small">
+                  <input
+                    type="checkbox"
+                    checked={autoTx}
+                    onChange={(e) => setAutoTx(e.target.checked)}
+                  />
+                  🌐 traduzir enquanto toca
+                </label>
               </div>
               <ul className="dialogue yt-transcript" ref={listRef}>
                 {chunks.map((c, i) => {
@@ -433,8 +488,18 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                       </button>
                       <div className="linebody">
                         <p className="en">{c.text}</p>
+                        {(tx[i] !== undefined || txLoading[i]) && (
+                          <p className="tx-line">{txLoading[i] ? 'traduzindo…' : tx[i]}</p>
+                        )}
                       </div>
                       <div className="lineact">
+                        <button
+                          className="ghost mini"
+                          title="Traduzir esta fala"
+                          onClick={() => toggleTx(i, c.text)}
+                        >
+                          {txLoading[i] ? '…' : tx[i] !== undefined ? '🌐✓' : '🌐'}
+                        </button>
                         <button
                           className="ghost mini"
                           disabled={saved[i] === true || saved[i] === 'saving'}
