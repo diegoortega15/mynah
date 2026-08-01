@@ -372,7 +372,7 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
 /* Listening dialogue */
 /* YouTube: transcript scrolls in its own box so the video stays put (great on mobile). */
 .yt-transcript-head { margin-top: 12px; align-items: baseline; }
-.yt-transcript { max-height: 46vh; overflow-y: auto; margin-top: 4px; border-top: 1px solid var(--border); }
+.yt-transcript { max-height: 150px; overflow-y: auto; margin-top: 4px; border-top: 1px solid var(--border); }
 .yt-transcript .line { padding: 8px; border-radius: 6px; scroll-margin: 8px; }
 .yt-line.active { background: rgba(124, 108, 255, 0.16); }
 .ts-btn {
