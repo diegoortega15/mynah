@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -94,9 +95,16 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
     return () => synth.removeEventListener('voiceschanged', load);
   }, []);
 
-  const enVoices = voices
-    .filter((v) => v.lang && v.lang.startsWith('en'))
-    .sort((a, b) => rankVoice(b) - rankVoice(a));
+  // Memoized so `speak` (and everything built on it) keeps a stable identity —
+  // otherwise a new array every render makes `speak` change every render, which
+  // can retrigger effects that depend on it (e.g. the vocab card auto-play loop).
+  const enVoices = useMemo(
+    () =>
+      voices
+        .filter((v) => v.lang && v.lang.startsWith('en'))
+        .sort((a, b) => rankVoice(b) - rankVoice(a)),
+    [voices]
+  );
 
   // Speak one utterance; resolves when it ends (or is cancelled).
   const speak = useCallback(

@@ -159,7 +159,10 @@ function ReviewSession({
   useEffect(() => {
     setRevealed(false);
     if (card && ttsSupported) speak(card.text_en);
-  }, [card, ttsSupported, speak]);
+    // Only re-run when the card itself changes — not on every render (which would
+    // retrigger the audio). `speak`/`ttsSupported` are intentionally omitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.card_id]);
 
   if (!card) return null;
 
