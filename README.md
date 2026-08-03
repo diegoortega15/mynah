@@ -39,7 +39,7 @@ Multiusuário (ideal pra casal/família), sem nuvem, seus dados ficam num SQLite
 |  |  |
 |---|---|
 | ![Dashboard do plano de 90 dias](docs/screenshots/dashboard.png) | ![Vocabulário com repetição espaçada](docs/screenshots/vocab.png) |
-| **🏠 Dashboard** — dia, fase, streak e os 4 blocos | **🗂️ Vocabulário** — revisão SM-2 com áudio |
+| **🏠 Dashboard** — dia, fase, streak e os 4 blocos | **🗂️ Vocabulário** — revisão FSRS com áudio |
 | ![Listening com diálogos gerados por IA](docs/screenshots/listening.png) | ![Fala: shadowing e tutor](docs/screenshots/speaking.png) |
 | **🎧 Ouvir** — diálogos narrados em 2 vozes | **🗣️ Fala** — shadowing (nota 0–100%) e tutor |
 
@@ -47,13 +47,16 @@ Multiusuário (ideal pra casal/família), sem nuvem, seus dados ficam num SQLite
 
 ## ✨ Funcionalidades
 
-- 🏠 **Dashboard do plano de 90 dias** — dia atual, fase, streak 🔥, foco sugerido do dia e marcos (Dia 7, 30, 45, 60, 90).
-- 🗂️ **Vocabulário com repetição espaçada (SM-2)** — o mesmo algoritmo do Anki (Again/Hard/Good/Easy). Cards são **frases inteiras em contexto**, com áudio — nunca palavras soltas. Gere "packs" por tema com a IA, **navegue e gerencie os cards** (ver/ouvir/excluir cards e baralhos).
-- ✍️ **Escrita com correção por IA** — escreva um e-mail/resumo e receba texto corrigido, lista de erros explicados em português, versão mais natural e um comentário.
-- 🎧 **Listening** — a IA gera diálogos de trabalho no seu nível e o navegador narra com **duas vozes**, com controles de **pausar / retomar / parar**. Salve qualquer frase como card de vocabulário (com o contexto da conversa).
-- 🗣️ **Fala** — **Shadowing** (ouça, repita e receba uma nota de 0–100%) e **Tutor de conversa** por voz ou texto, que mantém o contexto e corrige de leve.
-- 👥 **Perfis** — seletor estilo "Netflix" (sem senha), progresso e conteúdo separados por pessoa.
-- 🤖 **IA trocável** — escolha o provedor nas configurações (veja abaixo).
+- 🏠 **Dashboard do plano de 90 dias** — dia atual, fase, streak 🔥 (com **freezes 🧊** ganhos a cada semana completa), foco sugerido, marcos (Dia 7, 30, 45, 60, 90) e o painel **"seus erros recorrentes"**.
+- 🗂️ **Vocabulário com FSRS** — o agendador moderno do Anki (~25% menos revisões que o SM-2 clássico para a mesma retenção). Cards são **frases inteiras em contexto**, com áudio — nunca palavras soltas. Revisão com **4 modos intercalados**: traduzir, ✂️ completar a lacuna, 🇧🇷→🇬🇧 produzir a frase e 👂 só de ouvido.
+- 🎧 **Listening** — diálogos gerados no seu nível narrados com **duas vozes** (pausar/retomar/parar), e **YouTube com transcrição sincronizada**: legenda acompanha o vídeo, timestamps clicáveis, tradução com *lookahead* e "+ card" direto da fala.
+- 📖 **Leitura extensiva** — textos gerados no seu nível com **lookup de 1 clique** (o significado da palavra *naquela frase*) e mineração de frases para o baralho, estilo LingQ.
+- 🗣️ **Fala** — **Shadowing** com nota 0–100%, **Tutor de conversa** por voz ou texto, **🎭 Roleplay com objetivo** (cenário com meta concreta + avaliação por rubrica no final) e **4·3·2** (a mesma história 3× com menos tempo — fluência na marra).
+- ✍️ **Escrita com correção por IA** — texto corrigido, erros explicados em PT (e **categorizados num banco de erros** que realimenta o tutor e o corretor), versão mais natural e comentário.
+- 📈 **Nível dinâmico (i+1)** — a dificuldade do conteúdo gerado sobe (CEFR A2→C1) conforme seu desempenho real em cards, escrita e fala.
+- 👥 **Perfis** — seletor estilo "Netflix" (sem senha), progresso e conteúdo separados por pessoa (com checagem de dono na API). **Metas diárias configuráveis** por perfil.
+- 🎨 **Tema claro/escuro/auto** + ajuda contextual (❓ em cada tela) + validação de idioma (se você escrever em português onde é pra treinar inglês, o app avisa — antes de gastar IA).
+- 🤖 **IA trocável** — escolha o provedor nas configurações (veja abaixo). O painel avisa se a IA não está respondendo.
 - 🔒 **100% local** — SQLite + arquivos de áudio na pasta `data/`. Nada é enviado para a nuvem além das chamadas à IA que você configurou.
 
 ## 🤖 IAs suportadas
@@ -95,7 +98,7 @@ flowchart TD
 
     subgraph Server["🖥️ Backend local · Fastify 5 (porta 3001)"]
         Routes["Rotas REST<br/>users · decks · review · writing<br/>listening · speaking · config"]
-        SRS["lib/srs.js<br/>Repetição espaçada (SM-2)"]
+        SRS["lib/srs.js<br/>Repetição espaçada (FSRS)"]
         AI["services/ai.js<br/>Abstração de provedor"]
         Routes --> SRS
         Routes --> AI
@@ -122,33 +125,37 @@ flowchart TD
 
 ## 📋 Pré-requisitos
 
-- **Node.js 18+** (recomendado 20+)
+- **Node.js 20+**
 - **Chrome ou Edge** (para o áudio: ouvir e falar)
 - **Uma IA** configurada — pelo menos uma das opções da tabela acima
 
 ## 🚀 Instalação e execução
 
 ```bash
-# 1. Clone o repositório
-git clone https://github.com/diegoortega15/mynah.git
-cd mynah
-
-# 2. Backend (porta 3001)
-cd server
-npm install
-npm start
-
-# 3. Frontend (em outro terminal, porta 5173)
-cd web
-npm install
+git clone https://github.com/diegoortega15/mynah.git && cd mynah
+npm install && npm run install:all
 npm run dev
 ```
 
+Pronto — o `npm run dev` sobe o backend (`:3001`) e o frontend (`:5173`) juntos.
 Abra **https://localhost:5173** no Chrome ou Edge. Como o Vite usa um certificado
 autoassinado, o navegador mostra um aviso de segurança na primeira vez — clique em
 **Avançado → Prosseguir**.
 
-> **Ordem importa:** suba o backend antes do frontend (o frontend chama a API em `:3001`).
+> 💡 **Quer testar sem IA?** Rode `npm run seed` antes: cria um perfil "Demo" com um
+> baralho de 12 frases e um diálogo estáticos — revisão e listening funcionam sem
+> configurar provedor nenhum. (Todo perfil novo também já nasce com o baralho
+> **"Primeiros passos"**.)
+
+<details>
+<summary>Opções avançadas (rodar separado, HTTP, banco)</summary>
+
+- **Terminais separados:** `cd server && npm start` e `cd web && npm run dev`.
+- **Sem HTTPS** (o microfone só funciona em localhost): `NO_SSL=1 npm run dev` dentro de `web/`.
+- **Caminho do banco:** variável `DB_PATH` (padrão `data/fluencylab.db`; os testes usam `:memory:`).
+- **Porta da API:** variável `PORT` no server — lembre de ajustar o proxy em `web/vite.config.js`.
+
+</details>
 
 ## 📱 Acessar pelo celular (mesma rede Wi-Fi)
 
@@ -182,18 +189,18 @@ mynah/
 │  ├─ index.js             # bootstrap (listen)
 │  ├─ db.js  schema.sql    # SQLite + migrações idempotentes
 │  ├─ config.js            # config da IA (data/config.json)
-│  ├─ lib/                 # srs.js (SM-2), streak.js, phrases.js
+│  ├─ lib/                 # srs.js (FSRS), streak.js (freeze), level.js (i+1), errorBank.js…
 │  ├─ services/
 │  │  ├─ ai.js             # camada de IA (despacha para o provedor)
 │  │  └─ providers/        # claudeCli, codexCli, geminiCli, ollama, openai, gemini
-│  ├─ routes/              # users, decks, review, writing, listening, speaking, config, history, progress
-│  └─ test/                # Vitest (SM-2, extractJson, rotas via app.inject)
+│  ├─ routes/              # users, decks, review, writing, listening, speaking, reading, config, history, progress
+│  └─ test/                # Vitest (FSRS, streak, extractJson, rotas via app.inject em :memory:)
 ├─ web/                    # frontend React + TypeScript + Vite
 │  └─ src/
 │     ├─ api.ts queries.ts types.ts     # API tipada, hooks de dados, tipos de domínio
 │     ├─ useSpeech.ts speech-types.ts   # TTS/STT (Web Speech API)
 │     ├─ hooks/useRecorder.ts           # câmera + MediaRecorder
-│     ├─ features/speaking/             # Shadowing, Tutor, RecordSelf, FeedbackView
+│     ├─ features/speaking/             # Shadowing, Tutor, Roleplay, FourThreeTwo, RecordSelf
 │     └─ *.tsx                          # telas (Dashboard, Vocab, Listening, Writing, Settings…)
 ├─ assets/                 # logo/ícone (Mynah)
 ├─ data/                   # SQLite + áudios + config.json  (gitignored)
@@ -210,9 +217,11 @@ mynah/
 
 ## 🗺️ Roadmap
 
-Já implementado: gravar-se em vídeo com catálogo e feedback da IA (transcrição),
-progresso diário dos 4 blocos com metas + streak, histórico (heatmap), YouTube com
-transcrição, seleção de voz (prioriza vozes "Natural").
+Já implementado: FSRS + 4 modos de revisão, leitura extensiva com lookup, roleplay
+com rubrica, técnica 4·3·2, nível dinâmico (i+1), banco de erros recorrentes, streak
+com freeze, metas configuráveis, tema claro/escuro, gravar-se em vídeo com feedback
+da IA, YouTube com transcrição sincronizada, histórico (heatmap), ajuda contextual.
+O plano completo das rodadas de melhoria está em `docs/IMPROVEMENTS.md` e `docs/ROADMAP-V2.md`.
 
 Backlog:
 
