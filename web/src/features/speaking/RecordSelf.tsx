@@ -30,6 +30,7 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
   const [prompt, setPrompt] = useState(REC_PROMPTS[0]);
   const [analyzing, setAnalyzing] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [confirmDel, setConfirmDel] = useState<number | null>(null); // recording armed for deletion
 
   async function loadCatalog() {
     try {
@@ -48,7 +49,7 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
         setBusy(true);
         try {
           const { id } = await api.uploadRecording(user.id, blob, 'video', prompt);
-          if (transcript) await api.saveTranscript(id, transcript).catch(() => {});
+          if (transcript) await api.saveTranscript(id, transcript, user.id).catch(() => {});
           await loadCatalog();
           onPractice?.();
         } catch (e) {
@@ -63,7 +64,7 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
     setAnalyzing(id);
     setErr('');
     try {
-      const fb = await api.analyzeRecording(id);
+      const fb = await api.analyzeRecording(id, user.id);
       setItems((its) => its.map((r) => (r.id === id ? { ...r, feedback: fb } : r)));
     } catch (e) {
       setErr(errMsg(e));
@@ -72,7 +73,8 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
     }
   }
   async function remove(id: number) {
-    await api.deleteRecording(id).catch(() => {});
+    setConfirmDel(null);
+    await api.deleteRecording(id, user.id).catch(() => {});
     loadCatalog();
   }
 
@@ -143,12 +145,19 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
                       <span className={`fb-score mini ${scoreCls(r.feedback.score)}`}>{r.feedback.score}</span>
                     )}
                   </button>
-                  <button className="ghost mini del" title="Excluir" aria-label="Excluir gravação" onClick={() => remove(r.id)}>🗑</button>
+                  {confirmDel === r.id ? (
+                    <>
+                      <button className="ghost mini" onClick={() => setConfirmDel(null)}>✕</button>
+                      <button className="danger-btn mini" onClick={() => remove(r.id)}>Excluir?</button>
+                    </>
+                  ) : (
+                    <button className="ghost mini del" title="Excluir" aria-label="Excluir gravação" onClick={() => setConfirmDel(r.id)}>🗑</button>
+                  )}
                 </div>
 
                 {open && (
                   <div className="rec-body">
-                    <video className="rec-playback" controls src={api.recordingUrl(r.id)} />
+                    <video className="rec-playback" controls src={api.recordingUrl(r.id, user.id)} />
                     {r.transcript && (
                       <details className="tx-details">
                         <summary className="muted small">Ver transcrição do que você falou</summary>

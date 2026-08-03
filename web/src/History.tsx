@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
+import HelpTip from './HelpTip.jsx';
 import type { User, HistoryDay, HistoryDetail, BlockKey } from './types';
 
 const BLOCK_ICON: Record<BlockKey, string> = { listen: '🎧', vocab: '🗂️', speak: '🗣️', write: '✍️' };
@@ -68,7 +69,7 @@ export default function History({ user }: { user: User }) {
 
   return (
     <div className="history">
-      <h1>📅 Histórico</h1>
+      <h1>📅 Histórico <HelpTip topic="history" /></h1>
       <p className="muted small">
         {completed} dia(s) concluído(s) · toque num quadradinho ou num dia para ver os detalhes.
       </p>

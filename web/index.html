@@ -7,6 +7,22 @@
     <meta name="theme-color" content="#0f1220" />
     <meta name="description" content="Mynah — app local de imersão em inglês, plano de 90 dias." />
     <title>Mynah — fale como um nativo</title>
+    <script>
+      // Apply the saved theme BEFORE first paint (no flash). Mirror of src/theme.ts.
+      (function () {
+        try {
+          var pref = localStorage.getItem('mynah.theme');
+          var light =
+            pref === 'light' ||
+            (pref !== 'dark' && window.matchMedia('(prefers-color-scheme: light)').matches);
+          if (light) {
+            document.documentElement.dataset.theme = 'light';
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', '#f3f4fa');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
+import HelpTip from './HelpTip.jsx';
 import { useToday, useRefreshDay } from './queries.js';
 import type { User, Dialogue, DialogueLine, TranscriptChunk, SavedYoutubeVideo } from './types';
 
@@ -65,7 +66,7 @@ export default function Listening({ user }: { user: User }) {
 
   return (
     <div className="listening">
-      <h1>🎧 Ouvir</h1>
+      <h1>🎧 Ouvir <HelpTip topic="listening" /></h1>
       <DayBanner
         block={today?.blocks?.listen}
         doneText="Ouvir de hoje feito"
@@ -77,6 +78,16 @@ export default function Listening({ user }: { user: User }) {
         <button className={`chip ${tab === 'tips' ? 'sel' : ''}`} onClick={() => setTab('tips')}>Sugestões</button>
       </div>
 
+      {tab === 'ai' && user.day >= 31 && (
+        <div className="ai-banner">
+          🌍 <strong>Fase {user.day > 60 ? 3 : 2} do plano:</strong> priorize <em>inglês de
+          verdade</em> — vozes reais, velocidade real.{' '}
+          <button className="linklike" onClick={() => setTab('youtube')}>
+            Ir para a aba YouTube →
+          </button>
+          <span className="muted small"> (os diálogos de IA continuam aqui como aquecimento)</span>
+        </div>
+      )}
       {tab === 'ai' && <AiTab user={user} onMarked={refreshDay} />}
       {tab === 'youtube' && <YoutubeTab user={user} onMarked={refreshDay} />}
       {tab === 'tips' && <TipsTab onGoYoutube={() => setTab('youtube')} />}
@@ -86,7 +97,15 @@ export default function Listening({ user }: { user: User }) {
 
 function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const { playOne, speakLines, stop, pause, resume, isPlaying, paused } = useSpeech();
-  const [rate, setRate] = useState(parseFloat(localStorage.getItem('fluencylab.voiceRate') ?? '') || 1);
+  // Single source of truth with VoiceSettings: same localStorage key, and the
+  // inline select writes back so the two controls never diverge.
+  const [rate, setRateState] = useState(
+    parseFloat(localStorage.getItem('fluencylab.voiceRate') ?? '') || 1
+  );
+  const setRate = (v: number) => {
+    setRateState(v);
+    localStorage.setItem('fluencylab.voiceRate', String(v));
+  };
   const [theme, setTheme] = useState('');
   const [busy, setBusy] = useState('');
   const [dialogue, setDialogue] = useState<Dialogue | null>(null);
@@ -94,6 +113,7 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [err, setErr] = useState('');
   const [past, setPast] = useState<Dialogue[]>([]);
   const [showPt, setShowPt] = useState(false);
+  const [confirmDlg, setConfirmDlg] = useState<number | null>(null); // dialogue armed for deletion
   const dialogueRef = useRef<HTMLElement | null>(null);
   const scrollPendingRef = useRef(false);
 
@@ -217,10 +237,13 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
               {!isPlaying ? (
                 <button
                   className="primary"
-                  onClick={() => {
-                    speakLines(dialogue.lines, rate);
-                    api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
-                  }}
+                  onClick={() =>
+                    // The listen block only counts when the narration actually
+                    // finishes — not on click (pressing ▶ and leaving is not studying).
+                    speakLines(dialogue.lines, rate, () => {
+                      api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
+                    })
+                  }
                 >▶ Ouvir tudo</button>
               ) : (
                 <>
@@ -256,16 +279,29 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
               <li key={d.id}>
                 <button className="linklike" onClick={() => openPast(d)}>{d.title}</button>
                 <span className="row" style={{ gap: 8 }}>
-                  <span className="muted small">{d.lines.length} falas</span>
-                  <button
-                    className="ghost mini del"
-                    title="Excluir diálogo"
-                    onClick={async () => {
-                      await api.deleteDialogue(d.id).catch(() => {});
-                      if (dialogue?.id === d.id) { stop(); setDialogue(null); }
-                      loadPast();
-                    }}
-                  >🗑</button>
+                  {confirmDlg === d.id ? (
+                    <>
+                      <button className="ghost mini" onClick={() => setConfirmDlg(null)}>✕</button>
+                      <button
+                        className="danger-btn mini"
+                        onClick={async () => {
+                          setConfirmDlg(null);
+                          await api.deleteDialogue(d.id, user.id).catch(() => {});
+                          if (dialogue?.id === d.id) { stop(); setDialogue(null); }
+                          loadPast();
+                        }}
+                      >Excluir?</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="muted small">{d.lines.length} falas</span>
+                      <button
+                        className="ghost mini del"
+                        title="Excluir diálogo"
+                        onClick={() => setConfirmDlg(d.id)}
+                      >🗑</button>
+                    </>
+                  )}
                 </span>
               </li>
             ))}
@@ -282,6 +318,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
   const [savedVideos, setSavedVideos] = useState<SavedYoutubeVideo[]>([]);
+  const [confirmVid, setConfirmVid] = useState<number | null>(null); // saved video armed for deletion
   const [chunks, setChunks] = useState<TranscriptChunk[] | null>(null);
   const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
@@ -336,7 +373,6 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       setVideoTitle(res.title);
       setChunks(res.chunks);
       setVideoId(res.videoId);
-      api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
       loadSavedVideos();
     } catch (e) {
       setErr(errMsg(e));
@@ -357,17 +393,20 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       setVideoTitle(res.title);
       setChunks(res.chunks);
       setVideoId(res.videoId);
-      api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
     } catch (e) {
       setErr(errMsg(e));
     }
   }
 
   // Create the player when a video loads; poll its time to highlight the line.
+  // The listen block is only marked after ~60s of REAL playback (not on open).
   useEffect(() => {
     if (!videoId || !playerElRef.current) return;
     let cancelled = false;
     let poll: ReturnType<typeof setInterval> | undefined;
+    let lastT = -1;
+    let watchedMs = 0;
+    let marked = false;
     loadYouTubeApi().then((YT) => {
       if (cancelled || !playerElRef.current) return;
       playerRef.current = new YT.Player(playerElRef.current, {
@@ -380,6 +419,13 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
               const cs = chunksRef.current;
               if (!p?.getCurrentTime || !cs?.length) return;
               const t = p.getCurrentTime();
+              // Time advanced since the last tick → the video is actually playing.
+              if (lastT >= 0 && t > lastT && t - lastT < 3) watchedMs += 500;
+              lastT = t;
+              if (!marked && watchedMs >= 60_000) {
+                marked = true;
+                api.markProgress(user.id, { block: 'listen' }).then(onMarked).catch(() => {});
+              }
               let idx = -1;
               for (let i = 0; i < cs.length; i++) {
                 if (cs[i].offset <= t + 0.3) idx = i;
@@ -401,6 +447,10 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       }
       playerRef.current = null;
     };
+    // `onMarked`/`user.id` intentionally omitted: they'd recreate the player on
+    // every render (onMarked is a fresh closure each time). The player must live
+    // for as long as the same video is loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
 
   // Keep the active line visible inside the transcript box (scrolls the box only).
@@ -574,16 +624,27 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                 <button className="linklike" onClick={() => openSaved(v)}>
                   {v.title || v.videoId}
                 </button>
-                <button
-                  className="ghost mini del"
-                  title="Remover vídeo"
-                  onClick={async () => {
-                    await api.deleteYoutubeVideo(v.id).catch(() => {});
-                    loadSavedVideos();
-                  }}
-                >
-                  🗑
-                </button>
+                {confirmVid === v.id ? (
+                  <span className="row" style={{ gap: 8 }}>
+                    <button className="ghost mini" onClick={() => setConfirmVid(null)}>✕</button>
+                    <button
+                      className="danger-btn mini"
+                      onClick={async () => {
+                        setConfirmVid(null);
+                        await api.deleteYoutubeVideo(v.id, user.id).catch(() => {});
+                        loadSavedVideos();
+                      }}
+                    >Excluir?</button>
+                  </span>
+                ) : (
+                  <button
+                    className="ghost mini del"
+                    title="Remover vídeo"
+                    onClick={() => setConfirmVid(v.id)}
+                  >
+                    🗑
+                  </button>
+                )}
               </li>
             ))}
           </ul>

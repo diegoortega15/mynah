@@ -5,6 +5,9 @@ import { useToday, useRefreshDay } from '../../queries.js';
 import Shadowing from './Shadowing.jsx';
 import Tutor from './Tutor.jsx';
 import RecordSelf from './RecordSelf.jsx';
+import FourThreeTwo from './FourThreeTwo.jsx';
+import Roleplay from './Roleplay.jsx';
+import HelpTip from '../../HelpTip.jsx';
 import type { User } from '../../types';
 
 export default function Speaking({ user }: { user: User }) {
@@ -25,13 +28,19 @@ export default function Speaking({ user }: { user: User }) {
   return (
     <div className="speaking">
       <div className="row between">
-        <h1>🗣️ Fala</h1>
+        <h1>🗣️ Fala <HelpTip topic="speaking" /></h1>
         <div className="chips">
           <button className={`chip ${mode === 'shadow' ? 'sel' : ''}`} onClick={() => setMode('shadow')}>
             Shadowing
           </button>
           <button className={`chip ${mode === 'tutor' ? 'sel' : ''}`} onClick={() => setMode('tutor')}>
             Tutor (conversa)
+          </button>
+          <button className={`chip ${mode === 'roleplay' ? 'sel' : ''}`} onClick={() => setMode('roleplay')}>
+            🎭 Roleplay
+          </button>
+          <button className={`chip ${mode === '432' ? 'sel' : ''}`} onClick={() => setMode('432')}>
+            4·3·2
           </button>
           <button className={`chip ${mode === 'record' ? 'sel' : ''}`} onClick={() => setMode('record')}>
             Gravar-se
@@ -53,6 +62,8 @@ export default function Speaking({ user }: { user: User }) {
 
       {mode === 'shadow' && <Shadowing user={user} onPractice={onPractice} />}
       {mode === 'tutor' && <Tutor user={user} onPractice={onPractice} />}
+      {mode === 'roleplay' && <Roleplay user={user} onPractice={onPractice} />}
+      {mode === '432' && <FourThreeTwo user={user} onPractice={onPractice} />}
       {mode === 'record' && <RecordSelf user={user} onPractice={onPractice} />}
     </div>
   );

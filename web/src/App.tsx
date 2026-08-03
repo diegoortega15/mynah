@@ -8,6 +8,7 @@ import Dashboard from './Dashboard.jsx';
 import Vocab from './Vocab.jsx';
 import Writing from './Writing.jsx';
 import Listening from './Listening.jsx';
+import Reading from './Reading.jsx';
 import Speaking from './features/speaking/Speaking.jsx';
 import Settings from './Settings.jsx';
 import Help from './Help.jsx';
@@ -19,6 +20,7 @@ const LS_KEY = 'fluencylab.userId';
 const NAV = [
   { label: 'Início', icon: '🏠', path: '/' },
   { label: 'Ouvir', icon: '🎧', path: '/listening' },
+  { label: 'Ler', icon: '📖', path: '/reading' },
   { label: 'Vocabulário', icon: '🗂️', path: '/vocab' },
   { label: 'Fala', icon: '🗣️', path: '/speaking' },
   { label: 'Escrita', icon: '✍️', path: '/writing' },
@@ -98,6 +100,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard user={user} />} />
               <Route path="/listening" element={<Listening user={user} />} />
+              <Route path="/reading" element={<Reading user={user} />} />
               <Route path="/vocab" element={<Vocab user={user} onProgress={refreshUser} />} />
               <Route path="/speaking" element={<Speaking user={user} />} />
               <Route path="/writing" element={<Writing user={user} />} />

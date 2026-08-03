@@ -22,6 +22,8 @@ export interface User {
   streak: number;
   longest_streak: number;
   last_active: string | null;
+  freezes: number;
+  targets: Partial<Record<BlockKey, number>> | null;
   created_at?: string;
   day: number;
   phase: Phase;
@@ -118,6 +120,21 @@ export interface WritingError {
   original: string;
   correction: string;
   explanation: string;
+  category?: string;
+}
+
+export interface UserErrorEntry {
+  id: number;
+  source: 'writing' | 'speaking';
+  original: string;
+  correction: string;
+  explanation: string | null;
+  category: string | null;
+  created_at: string;
+}
+export interface UserErrorsSummary {
+  top: { category: string; count: number }[];
+  recent: UserErrorEntry[];
 }
 export interface WritingFeedback {
   corrected: string;
@@ -160,6 +177,28 @@ export interface SavedYoutubeVideo {
   videoId: string;
   title: string | null;
   created_at: string;
+}
+
+export interface Reading {
+  id: number;
+  theme: string;
+  title: string;
+  text_en: string;
+  created_at: string;
+}
+
+export interface RoleplayScenario {
+  title: string;
+  scenario: string;
+  ai_role: string;
+  objective: string;
+  opening: string;
+}
+export interface RoleplayEval {
+  achieved: boolean;
+  score: number;
+  feedback: string;
+  better_phrases: { original: string; better: string; why: string; category?: string }[];
 }
 
 export interface ShadowItem {

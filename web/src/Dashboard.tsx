@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { api } from './api.js';
+import HelpTip from './HelpTip.jsx';
 import { useStats, useToday } from './queries.js';
-import type { User, BlockKey } from './types';
+import type { User, BlockKey, UserErrorsSummary } from './types';
 
 interface Block {
   key: BlockKey;
@@ -24,24 +26,73 @@ export default function Dashboard({ user }: { user: User }) {
   const { data: stats } = useStats(user.id);
   const { data: day } = useToday(user.id);
   const [openHelp, setOpenHelp] = useState(() => localStorage.getItem('fluencylab.dashHelp') !== '0');
+  const [aiDown, setAiDown] = useState(false);
+  const [errBank, setErrBank] = useState<UserErrorsSummary | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .getErrors(user.id)
+      .then((e) => alive && setErrBank(e))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [user.id]);
+
+  // Health-check the AI once per browser session (in the background) so the
+  // user learns about a missing/broken provider HERE — not as a cryptic error
+  // on their first "Gerar".
+  useEffect(() => {
+    if (sessionStorage.getItem('mynah.aiHealth') === 'ok') return;
+    let alive = true;
+    api
+      .testConfig({})
+      .then(() => {
+        sessionStorage.setItem('mynah.aiHealth', 'ok');
+        if (alive) setAiDown(false);
+      })
+      .catch(() => {
+        if (alive) setAiDown(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const doneCount = day?.doneCount ?? 0;
   const complete = day?.complete ?? false;
 
   return (
     <div className="dash">
+      {aiDown && (
+        <div className="ai-banner">
+          ⚠️ <strong>A IA não está respondendo.</strong> Os exercícios gerados (packs, diálogos,
+          correções, tutor) não vão funcionar até configurar.{' '}
+          <Link to="/settings">Abrir configurações →</Link>
+          <span className="muted small"> (Revisar cards e ouvir diálogos salvos funcionam normalmente.)</span>
+        </div>
+      )}
       <section className="hero">
         <div>
           <h1>
-            Olá, {user.name} {user.avatar}
+            Olá, {user.name} {user.avatar} <HelpTip topic="dashboard" />
           </h1>
           <p className="muted">
             Dia <strong>{user.day}/90</strong> · Fase {user.phase.n} — {user.phase.name}
           </p>
         </div>
-        <div className="streak-badge" title="Dias seguidos concluindo os 4 blocos">
+        <div
+          className="streak-badge"
+          title="Dias seguidos concluindo os 4 blocos. Cada semana completa ganha 1 🧊, que protege o streak num dia perdido."
+        >
           🔥 <strong>{user.streak}</strong>
           <span className="muted small">streak</span>
+          {user.freezes > 0 && (
+            <span className="muted small" aria-label={`${user.freezes} proteções de streak`}>
+              🧊 ×{user.freezes}
+            </span>
+          )}
         </div>
       </section>
 
@@ -129,8 +180,52 @@ export default function Dashboard({ user }: { user: User }) {
               </button>
             );
           })}
+          <button className="block extra" onClick={() => navigate('/reading')}>
+            <span className="step star">★</span>
+            <span className="bicon">📖</span>
+            <span className="btitle">Ler</span>
+            <span className="muted small">extra</span>
+            <span className="bnote">Leitura no seu nível — não conta bloco, vale ouro</span>
+          </button>
         </div>
       </section>
+
+      {errBank && errBank.top.length > 0 && (
+        <section className="card">
+          <h2>🎯 Seus erros recorrentes</h2>
+          <p className="muted small">
+            Últimos 30 dias, vindos das correções de ✍️ escrita e 🗣️ fala (tutor, roleplay,
+            gravações). O corretor e o tutor já prestam atenção extra neles.
+          </p>
+          <div className="chips">
+            {errBank.top.map((t) => (
+              <span key={t.category} className="chip">
+                {t.category} · {t.count}×
+              </span>
+            ))}
+          </div>
+          {errBank.recent.length > 0 && (
+            <details className="tx-details">
+              <summary className="muted small">Ver exemplos recentes</summary>
+              <ul className="errors">
+                {errBank.recent.map((e) => (
+                  <li key={e.id}>
+                    <span title={e.source === 'writing' ? 'Da escrita' : 'Da fala'}>
+                      {e.source === 'writing' ? '✍️' : '🗣️'}
+                    </span>{' '}
+                    <span className="wrong">{e.original}</span> →{' '}
+                    <span className="right">{e.correction}</span>
+                    <div className="muted small">
+                      {e.category ? `[${e.category}] ` : ''}
+                      {e.explanation}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
 
       {user.nextMilestone && (
         <section className="milestone">

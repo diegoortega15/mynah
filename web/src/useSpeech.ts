@@ -37,7 +37,7 @@ interface DictationOpts {
 
 export interface SpeechContextValue {
   speak: (text: string, opts?: SpeakOpts) => Promise<void>;
-  speakLines: (lines: Line[], rate?: number) => void;
+  speakLines: (lines: Line[], rate?: number, onDone?: () => void) => void;
   playOne: (text: string, opts?: { voiceIndex?: number; rate?: number }) => void;
   stop: () => void;
   pause: () => void;
@@ -79,7 +79,12 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
   const [paused, setPaused] = useState(false);
   const [dictating, setDictating] = useState(false); // continuous dictation is on
   const seqRef = useRef(0); // token to cancel an in-flight playback
-  const queueRef = useRef<{ lines: Line[]; index: number; rate?: number } | null>(null);
+  const queueRef = useRef<{
+    lines: Line[];
+    index: number;
+    rate?: number;
+    onDone?: () => void; // fires only on natural completion (survives pause/resume)
+  } | null>(null);
   const recRef = useRef<SpeechRecognitionInstance | null>(null);
   const dictTextRef = useRef(''); // accumulated final transcript while dictating
   const dictActiveRef = useRef(false); // true while the user wants to keep recording
@@ -144,30 +149,34 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
   // built on top of this by cancelling and replaying from the current line
   // (the native pause()/resume() is unreliable in Chrome).
   const playFrom = useCallback(
-    (lines: Line[], start: number, rate?: number) => {
+    (lines: Line[], start: number, rate?: number, onDone?: () => void) => {
       const synth = window.speechSynthesis;
       if (!synth || !lines.length) return;
       synth.cancel();
       const token = ++seqRef.current;
-      queueRef.current = { lines, index: start, rate };
+      queueRef.current = { lines, index: start, rate, onDone };
       setSeqActive(true);
       setPaused(false);
       (async () => {
         for (let k = start; k < lines.length; k++) {
           if (seqRef.current !== token) return; // paused or stopped
-          queueRef.current = { lines, index: k, rate };
+          queueRef.current = { lines, index: k, rate, onDone };
           await speak(lines[k].en, { voiceIndex: lines[k].speaker === 'B' ? 1 : 0, rate });
         }
         if (seqRef.current === token) {
           setSeqActive(false);
           queueRef.current = null;
+          onDone?.(); // finished every line without being stopped
         }
       })();
     },
     [speak]
   );
 
-  const speakLines = useCallback((lines: Line[], rate?: number) => playFrom(lines, 0, rate), [playFrom]);
+  const speakLines = useCallback(
+    (lines: Line[], rate?: number, onDone?: () => void) => playFrom(lines, 0, rate, onDone),
+    [playFrom]
+  );
 
   const playOne = useCallback(
     (text: string, { voiceIndex = 0, rate }: { voiceIndex?: number; rate?: number } = {}) =>
@@ -184,10 +193,10 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
     setSpeaking(false);
   }, []);
 
-  // Resume = replay from the remembered line.
+  // Resume = replay from the remembered line (keeps the completion callback).
   const resume = useCallback(() => {
     const q = queueRef.current;
-    if (q) playFrom(q.lines, q.index, q.rate);
+    if (q) playFrom(q.lines, q.index, q.rate, q.onDone);
   }, [playFrom]);
 
   const stop = useCallback(() => {

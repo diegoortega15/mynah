@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
-import { useStats, useRefreshDay } from './queries.js';
+import HelpTip from './HelpTip.jsx';
+import { useStats, useToday, useRefreshDay } from './queries.js';
 import type { User, Deck, DeckCard, ReviewCard, Rating } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -13,6 +14,50 @@ interface ReviewState {
   done: number;
 }
 
+// --- Review modes: interleaved retrieval practice ---------------------------
+// Pure recognition (read EN → recall PT) is the weakest form of practice.
+// Repeat cards rotate through cloze (produce the missing word), PT→EN
+// (produce the sentence) and listening (understand by ear) — retrieval in
+// multiple directions is what the SLA literature calls for.
+type ReviewMode = 'read' | 'cloze' | 'produce' | 'listen';
+
+const MODE_INFO: Record<ReviewMode, { label: string; hint: string }> = {
+  read: { label: '🇬🇧→🇧🇷 Traduza', hint: 'Leia e lembre o significado' },
+  cloze: { label: '✂️ Complete a lacuna', hint: 'Qual palavra está faltando?' },
+  produce: { label: '🇧🇷→🇬🇧 Fale em inglês', hint: 'Como você diria isso em inglês? Fale em voz alta.' },
+  listen: { label: '👂 Só de ouvido', hint: 'Ouça e entenda — sem ler.' },
+};
+
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'but', 'is', 'are',
+  'was', 'were', 'be', 'been', 'it', 'that', 'this', 'you', 'i', 'we', 'they', 'he', 'she',
+  'my', 'your', 'me', 'with', 'as', 'do', 'did', 'does', 'have', 'has', 'had', 'can',
+  'could', 'would', 'should', 'will', 'not', 'about', 'what', 'when', 'how',
+]);
+
+// Deterministic cloze target: the longest content word (no AI call needed).
+function clozeWord(text: string): string | null {
+  const words = text.replace(/[^A-Za-z' ]/g, ' ').split(/\s+/).filter(Boolean);
+  const candidates = words.filter((w) => w.length >= 4 && !STOPWORDS.has(w.toLowerCase()));
+  if (!candidates.length) return null;
+  return candidates.reduce((a, b) => (b.length > a.length ? b : a));
+}
+
+function maskWord(text: string, word: string): string {
+  return text.replace(word, '_'.repeat(Math.max(4, word.length)));
+}
+
+// First exposure is always recognition; repeats rotate deterministically.
+function modeFor(card: ReviewCard, ttsOk: boolean): ReviewMode {
+  if (card.reps === 0) return 'read';
+  const pool: ReviewMode[] = ['read', 'cloze', 'produce'];
+  if (ttsOk) pool.push('listen');
+  const m = pool[(card.card_id + card.reps) % pool.length];
+  // Cloze needs a maskable word; fall back to recognition.
+  if (m === 'cloze' && !clozeWord(card.text_en)) return 'read';
+  return m;
+}
+
 export default function Vocab({ user, onProgress }: { user: User; onProgress?: () => void }) {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [theme, setTheme] = useState('');
@@ -20,10 +65,17 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
   const [msg, setMsg] = useState('');
   const [session, setSession] = useState<ReviewState | null>(null); // review mode
   const { data: stats } = useStats(user.id);
+  const { data: todayData } = useToday(user.id);
+  // Daily vocab target comes from the server (configurable per profile).
+  const vocabTarget = todayData?.targets?.vocab ?? 20;
   const refreshDay = useRefreshDay(user.id);
 
   const loadDecks = useCallback(async () => {
-    setDecks(await api.listDecks(user.id));
+    try {
+      setDecks(await api.listDecks(user.id));
+    } catch {
+      setMsg('❌ Não consegui carregar os baralhos. O servidor está rodando?');
+    }
   }, [user.id]);
   useEffect(() => {
     loadDecks();
@@ -48,17 +100,22 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
   }
 
   async function startReview() {
-    const cards = await api.getReview(user.id);
-    if (!cards.length) {
-      setMsg('Nada pra revisar agora. Gere um pack ou volte depois. 🎉');
-      return;
+    try {
+      const cards = await api.getReview(user.id);
+      if (!cards.length) {
+        setMsg('Nada pra revisar agora. Gere um pack ou volte depois. 🎉');
+        return;
+      }
+      setSession({ queue: cards, done: 0 });
+    } catch {
+      setMsg('❌ Não consegui iniciar a revisão. Verifique a conexão e tente de novo.');
     }
-    setSession({ queue: cards, done: 0 });
   }
 
   if (session) {
     return (
       <ReviewSession
+        uid={user.id}
         session={session}
         setSession={setSession}
         onDone={() => {
@@ -78,17 +135,19 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
   return (
     <div className="vocab">
       <div className="vocab-head">
-        <h1>Vocabulário</h1>
+        <h1>Vocabulário <HelpTip topic="vocab" /></h1>
         <button className="primary" onClick={startReview}>
           ▶ Revisar agora
         </button>
       </div>
 
       {stats && (
-        <div className={`vocab-status ${stats.due === 0 || stats.reviewedToday >= 20 ? 'done' : ''}`}>
-          {stats.due === 0 || stats.reviewedToday >= 20
+        <div
+          className={`vocab-status ${stats.due === 0 || stats.reviewedToday >= vocabTarget ? 'done' : ''}`}
+        >
+          {stats.due === 0 || stats.reviewedToday >= vocabTarget
             ? `✅ Revisão de hoje concluída — ${stats.reviewedToday} card(s) revisados hoje. Os próximos voltam nos dias certos.`
-            : `📚 ${stats.due} card(s) vencendo hoje · ${stats.reviewedToday}/20 já feitos.`}
+            : `📚 ${stats.due} card(s) vencendo hoje · ${stats.reviewedToday}/${vocabTarget} já feitos.`}
         </div>
       )}
 
@@ -130,6 +189,7 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
           {decks.map((d) => (
             <DeckItem
               key={d.id}
+              uid={user.id}
               deck={d}
               onChanged={() => {
                 loadDecks();
@@ -144,21 +204,29 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
 }
 
 function ReviewSession({
+  uid,
   session,
   setSession,
   onDone,
 }: {
+  uid: number;
   session: ReviewState;
   setSession: Dispatch<SetStateAction<ReviewState | null>>;
   onDone: () => void;
 }) {
   const { speak, ttsSupported } = useSpeech();
   const [revealed, setRevealed] = useState(false);
+  const [rateErr, setRateErr] = useState('');
+  const [rating, setRating] = useState(false);
   const card = session.queue[0];
 
   useEffect(() => {
     setRevealed(false);
-    if (card && ttsSupported) speak(card.text_en);
+    if (!card || !ttsSupported) return;
+    // Auto-play only when hearing the sentence doesn't give the answer away:
+    // 'read' (audio reinforces) and 'listen' (audio IS the exercise).
+    const m = modeFor(card, ttsSupported);
+    if (m === 'read' || m === 'listen') speak(card.text_en);
     // Only re-run when the card itself changes — not on every render (which would
     // retrigger the audio). `speak`/`ttsSupported` are intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,11 +234,26 @@ function ReviewSession({
 
   if (!card) return null;
 
-  async function rate(rating: Rating) {
-    await api.submitReview(card.card_id, rating);
+  const mode = modeFor(card, ttsSupported);
+  const masked = mode === 'cloze' ? maskWord(card.text_en, clozeWord(card.text_en) ?? '') : null;
+  const audioAllowed = mode === 'read' || mode === 'listen' || revealed;
+
+  async function rate(r: Rating) {
+    if (rating) return; // ignore double-taps while the request is in flight
+    setRating(true);
+    setRateErr('');
+    try {
+      await api.submitReview(card.card_id, r, uid);
+    } catch {
+      // Don't advance the queue on failure — the card stays, the user retries.
+      setRateErr('❌ Não consegui salvar a avaliação. Tente de novo.');
+      setRating(false);
+      return;
+    }
+    setRating(false);
     const rest = session.queue.slice(1);
     // 'again' → requeue at the end of this session
-    const queue = rating === 'again' ? [...rest, card] : rest;
+    const queue = r === 'again' ? [...rest, card] : rest;
     if (queue.length === 0) return onDone();
     setSession({ queue, done: session.done + 1 });
   }
@@ -199,35 +282,54 @@ function ReviewSession({
           }
         }}
       >
-        <span className="muted small">{card.deck_name}</span>
-        <p className="front" lang="en">{card.text_en}</p>
-        <button
-          className="ghost play"
-          aria-label="Ouvir a frase"
-          onClick={(e) => {
-            e.stopPropagation();
-            speak(card.text_en);
-          }}
-        >
-          🔊 Ouvir
-        </button>
+        <div className="row between">
+          <span className="muted small">{card.deck_name}</span>
+          <span className="mode-chip">{MODE_INFO[mode].label}</span>
+        </div>
+
+        {mode === 'read' && <p className="front" lang="en">{card.text_en}</p>}
+        {mode === 'cloze' && <p className="front" lang="en">{revealed ? card.text_en : masked}</p>}
+        {mode === 'produce' && (
+          <p className="front" lang="pt-BR">{card.translation_pt}</p>
+        )}
+        {mode === 'listen' && !revealed && <p className="front listen-front">👂 …</p>}
+        {mode === 'listen' && revealed && <p className="front" lang="en">{card.text_en}</p>}
+
+        {audioAllowed && (
+          <button
+            className="ghost play"
+            aria-label="Ouvir a frase"
+            onClick={(e) => {
+              e.stopPropagation();
+              speak(card.text_en);
+            }}
+          >
+            🔊 Ouvir
+          </button>
+        )}
 
         {revealed ? (
           <div className="back">
-            <p className="pt">{card.translation_pt}</p>
+            {mode === 'produce' ? (
+              <p className="pt" lang="en">{card.text_en}</p>
+            ) : (
+              <p className="pt">{card.translation_pt}</p>
+            )}
             {card.context && <p className="ctx" lang="en">“{card.context}”</p>}
           </div>
         ) : (
-          <p className="muted small tap">toque (ou Enter) para revelar</p>
+          <p className="muted small tap">{MODE_INFO[mode].hint} — toque para revelar</p>
         )}
       </div>
 
+      {rateErr && <p className="error small">{rateErr}</p>}
+
       {revealed ? (
         <div className="rate-row">
-          <button className="r again" onClick={() => rate('again')}>De novo</button>
-          <button className="r hard" onClick={() => rate('hard')}>Difícil</button>
-          <button className="r good" onClick={() => rate('good')}>Bom</button>
-          <button className="r easy" onClick={() => rate('easy')}>Fácil</button>
+          <button className="r again" disabled={rating} onClick={() => rate('again')}>De novo</button>
+          <button className="r hard" disabled={rating} onClick={() => rate('hard')}>Difícil</button>
+          <button className="r good" disabled={rating} onClick={() => rate('good')}>Bom</button>
+          <button className="r easy" disabled={rating} onClick={() => rate('easy')}>Fácil</button>
         </div>
       ) : (
         <button className="primary wide" onClick={() => setRevealed(true)}>
@@ -238,24 +340,40 @@ function ReviewSession({
   );
 }
 
-function DeckItem({ deck, onChanged }: { deck: Deck; onChanged: () => void }) {
+function DeckItem({ uid, deck, onChanged }: { uid: number; deck: Deck; onChanged: () => void }) {
   const { playOne } = useSpeech();
   const [open, setOpen] = useState(false);
   const [cards, setCards] = useState<DeckCard[] | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [confirmCard, setConfirmCard] = useState<number | null>(null); // card armed for deletion
 
   async function toggle() {
-    if (!open && cards === null) setCards(await api.deckCards(deck.id));
+    if (!open && cards === null) {
+      try {
+        setCards(await api.deckCards(deck.id, uid));
+      } catch {
+        setCards([]);
+      }
+    }
     setOpen((o) => !o);
   }
   async function removeCard(id: number) {
-    await api.deleteCard(id);
-    setCards((cs) => (cs ?? []).filter((c) => c.card_id !== id));
-    onChanged();
+    setConfirmCard(null);
+    try {
+      await api.deleteCard(id, uid);
+      setCards((cs) => (cs ?? []).filter((c) => c.card_id !== id));
+      onChanged();
+    } catch {
+      /* deixa o card na lista; o usuário tenta de novo */
+    }
   }
   async function removeDeck() {
-    await api.deleteDeck(deck.id);
-    onChanged();
+    try {
+      await api.deleteDeck(deck.id, uid);
+      onChanged();
+    } catch {
+      setConfirmDel(false);
+    }
   }
 
   return (
@@ -278,8 +396,17 @@ function DeckItem({ deck, onChanged }: { deck: Deck; onChanged: () => void }) {
                   <span className="muted small">{c.translation_pt}</span>
                 </div>
                 <div className="cl-act">
-                  <button className="ghost mini" title="Ouvir" onClick={() => playOne(c.text_en)}>🔊</button>
-                  <button className="ghost mini del" title="Excluir card" onClick={() => removeCard(c.card_id)}>🗑</button>
+                  {confirmCard === c.card_id ? (
+                    <>
+                      <button className="ghost mini" title="Cancelar" onClick={() => setConfirmCard(null)}>✕</button>
+                      <button className="danger-btn mini" title="Confirmar exclusão" onClick={() => removeCard(c.card_id)}>Excluir?</button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="ghost mini" title="Ouvir" onClick={() => playOne(c.text_en)}>🔊</button>
+                      <button className="ghost mini del" title="Excluir card" onClick={() => setConfirmCard(c.card_id)}>🗑</button>
+                    </>
+                  )}
                 </div>
               </li>
             ))}

@@ -17,6 +17,10 @@ import type {
   TutorMessage,
   TranscriptChunk,
   SavedYoutubeVideo,
+  UserErrorsSummary,
+  RoleplayScenario,
+  RoleplayEval,
+  Reading,
   BlockKey,
 } from './types';
 
@@ -28,19 +32,26 @@ interface ReqOptions {
 
 async function req<T>(path: string, options: ReqOptions = {}): Promise<T> {
   const hasBody = options.body != null;
-  const res = await fetch(path, {
-    ...options,
-    // Only send a JSON content-type when there is actually a body — Fastify
-    // rejects an empty body when content-type is application/json (breaks DELETE).
-    headers: {
-      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-    body: hasBody ? JSON.stringify(options.body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...options,
+      // Only send a JSON content-type when there is actually a body — Fastify
+      // rejects an empty body when content-type is application/json (breaks DELETE).
+      headers: {
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+      body: hasBody ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    // Network-level failure (server down, offline) — raw fetch errors are in
+    // English and cryptic; translate once here for every screen.
+    throw new Error('Sem conexão com o servidor. Verifique se o app está rodando e tente de novo.');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || err.error || `HTTP ${res.status}`);
+    throw new Error(err.detail || err.message || err.error || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -52,8 +63,12 @@ export const api = {
   getUser: (id: number | string) => req<User>(`/api/users/${id}`),
   createUser: (body: { name: string; level?: string; avatar?: string }) =>
     req<User>('/api/users', { method: 'POST', body }),
-  updateUser: (id: number, body: Partial<Pick<User, 'name' | 'avatar' | 'level' | 'start_date'>>) =>
-    req<User>(`/api/users/${id}`, { method: 'PATCH', body }),
+  updateUser: (
+    id: number,
+    body: Partial<Pick<User, 'name' | 'avatar' | 'level' | 'start_date'>> & {
+      targets?: Partial<Record<BlockKey, number>>;
+    }
+  ) => req<User>(`/api/users/${id}`, { method: 'PATCH', body }),
   deleteUser: (id: number) => req<Ok>(`/api/users/${id}`, { method: 'DELETE' }),
   profileStats: (id: number) =>
     req<{ cards: number; reviews: number; writings: number; dialogues: number; speaking: number }>(
@@ -63,9 +78,11 @@ export const api = {
   listDecks: (uid: number) => req<Deck[]>(`/api/users/${uid}/decks`),
   generatePack: (uid: number, body: { theme: string; count?: number }) =>
     req<{ deck_id: number; added: number }>(`/api/users/${uid}/decks/generate`, { method: 'POST', body }),
-  deleteDeck: (id: number) => req<Ok>(`/api/decks/${id}`, { method: 'DELETE' }),
-  deckCards: (deckId: number) => req<DeckCard[]>(`/api/decks/${deckId}/cards`),
-  deleteCard: (cardId: number) => req<Ok>(`/api/cards/${cardId}`, { method: 'DELETE' }),
+  deleteDeck: (id: number, uid: number) =>
+    req<Ok>(`/api/decks/${id}?uid=${uid}`, { method: 'DELETE' }),
+  deckCards: (deckId: number, uid: number) => req<DeckCard[]>(`/api/decks/${deckId}/cards?uid=${uid}`),
+  deleteCard: (cardId: number, uid: number) =>
+    req<Ok>(`/api/cards/${cardId}?uid=${uid}`, { method: 'DELETE' }),
 
   getReview: (uid: number) => req<ReviewCard[]>(`/api/users/${uid}/review`),
   getStats: (uid: number) => req<Stats>(`/api/users/${uid}/stats`),
@@ -78,9 +95,9 @@ export const api = {
   // History
   history: (uid: number) => req<HistoryDay[]>(`/api/users/${uid}/history`),
   historyDay: (uid: number, date: string) => req<HistoryDetail>(`/api/users/${uid}/history/${date}`),
-  submitReview: (cardId: number, rating: Rating) =>
+  submitReview: (cardId: number, rating: Rating, uid: number) =>
     req<{ ease: number; interval_days: number; reps: number; state: string; due_date: string }>(
-      `/api/cards/${cardId}/review`,
+      `/api/cards/${cardId}/review?uid=${uid}`,
       { method: 'POST', body: { rating } }
     ),
 
@@ -88,6 +105,7 @@ export const api = {
   correctWriting: (uid: number, body: { prompt?: string; text: string }) =>
     req<{ id: number; feedback: WritingFeedback }>(`/api/users/${uid}/writing`, { method: 'POST', body }),
   writingHistory: (uid: number) => req<Writing[]>(`/api/users/${uid}/writing`),
+  getErrors: (uid: number) => req<UserErrorsSummary>(`/api/users/${uid}/errors`),
 
   // Listening
   generateDialogue: (uid: number, body: { theme: string }) =>
@@ -105,9 +123,11 @@ export const api = {
     req<{ videoId: string; title: string | null; chunks: TranscriptChunk[] }>(
       `/api/users/${uid}/youtube-videos/${rowId}`
     ),
-  deleteYoutubeVideo: (rowId: number) => req<Ok>(`/api/youtube-videos/${rowId}`, { method: 'DELETE' }),
+  deleteYoutubeVideo: (rowId: number, uid: number) =>
+    req<Ok>(`/api/youtube-videos/${rowId}?uid=${uid}`, { method: 'DELETE' }),
   listDialogues: (uid: number) => req<Dialogue[]>(`/api/users/${uid}/listening`),
-  deleteDialogue: (id: number) => req<Ok>(`/api/dialogues/${id}`, { method: 'DELETE' }),
+  deleteDialogue: (id: number, uid: number) =>
+    req<Ok>(`/api/dialogues/${id}?uid=${uid}`, { method: 'DELETE' }),
   savePhrase: (uid: number, body: { en: string; pt?: string; context?: string }) =>
     req<{ phrase_id: number }>(`/api/users/${uid}/phrases`, { method: 'POST', body }),
 
@@ -121,14 +141,24 @@ export const api = {
   shadowingGenerate: (uid: number, theme?: string) =>
     req<{ items: ShadowItem[] }>(`/api/users/${uid}/shadowing/generate`, { method: 'POST', body: { theme } }),
   translate: (text: string) => req<{ pt: string }>('/api/translate', { method: 'POST', body: { text } }),
+  roleplayStart: (uid: number, theme?: string) =>
+    req<RoleplayScenario>(`/api/users/${uid}/roleplay/start`, { method: 'POST', body: { theme } }),
+  roleplayTurn: (uid: number, bodyArg: { messages: TutorMessage[]; scenario: Partial<RoleplayScenario> }) =>
+    req<{ reply: string }>(`/api/users/${uid}/roleplay/turn`, { method: 'POST', body: bodyArg }),
+  roleplayEvaluate: (
+    uid: number,
+    bodyArg: { messages: TutorMessage[]; scenario: Partial<RoleplayScenario> }
+  ) => req<RoleplayEval>(`/api/users/${uid}/roleplay/evaluate`, { method: 'POST', body: bodyArg }),
 
   // Self-recordings
   listRecordings: (uid: number) => req<Recording[]>(`/api/users/${uid}/recordings`),
-  deleteRecording: (id: number) => req<Ok>(`/api/recordings/${id}`, { method: 'DELETE' }),
-  recordingUrl: (id: number) => `/api/recordings/${id}/file`,
-  saveTranscript: (id: number, transcript: string) =>
-    req<Ok>(`/api/recordings/${id}/transcript`, { method: 'POST', body: { transcript } }),
-  analyzeRecording: (id: number) => req<SpeechFeedback>(`/api/recordings/${id}/analyze`, { method: 'POST', body: {} }),
+  deleteRecording: (id: number, uid: number) =>
+    req<Ok>(`/api/recordings/${id}?uid=${uid}`, { method: 'DELETE' }),
+  recordingUrl: (id: number, uid: number) => `/api/recordings/${id}/file?uid=${uid}`,
+  saveTranscript: (id: number, transcript: string, uid: number) =>
+    req<Ok>(`/api/recordings/${id}/transcript?uid=${uid}`, { method: 'POST', body: { transcript } }),
+  analyzeRecording: (id: number, uid: number) =>
+    req<SpeechFeedback>(`/api/recordings/${id}/analyze?uid=${uid}`, { method: 'POST', body: {} }),
   uploadRecording: async (uid: number, blob: Blob, kind: string, prompt: string) => {
     const q = `kind=${kind}&prompt=${encodeURIComponent(prompt || '')}`;
     const res = await fetch(`/api/users/${uid}/recordings?${q}`, {
@@ -139,6 +169,18 @@ export const api = {
     if (!res.ok) throw new Error('falha ao enviar a gravação');
     return res.json() as Promise<{ id: number }>;
   },
+
+  // Reading (extensive reading tab)
+  generateReading: (uid: number, theme?: string) =>
+    req<{ id: number; title: string; text: string }>(`/api/users/${uid}/reading/generate`, {
+      method: 'POST',
+      body: { theme },
+    }),
+  listReadings: (uid: number) => req<Reading[]>(`/api/users/${uid}/readings`),
+  deleteReading: (id: number, uid: number) =>
+    req<Ok>(`/api/readings/${id}?uid=${uid}`, { method: 'DELETE' }),
+  lookup: (uid: number, word: string, sentence: string) =>
+    req<{ pt: string }>(`/api/users/${uid}/lookup`, { method: 'POST', body: { word, sentence } }),
 
   // AI provider config (shape is dynamic → typed loosely)
   getConfig: () => req<any>('/api/config'),

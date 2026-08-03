@@ -1,8 +1,24 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import type { User } from './types';
+import { getThemePref, setThemePref, type ThemePref } from './theme.js';
+import HelpTip from './HelpTip.jsx';
 import AiSettings from './AiSettings.jsx';
 import VoiceSettings from './VoiceSettings.jsx';
+
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: 'auto', label: '🌗 Auto (sistema)' },
+  { value: 'light', label: '☀️ Claro' },
+  { value: 'dark', label: '🌙 Escuro' },
+];
+
+const DEFAULT_TARGETS = { listen: 1, vocab: 20, speak: 2, write: 1 };
+const TARGET_FIELDS = [
+  { key: 'listen' as const, label: '🎧 Diálogos/vídeos', min: 1, max: 5 },
+  { key: 'vocab' as const, label: '🗂️ Cards', min: 5, max: 100 },
+  { key: 'speak' as const, label: '🗣️ Práticas de fala', min: 1, max: 10 },
+  { key: 'write' as const, label: '✍️ Textos', min: 1, max: 5 },
+];
 
 const LEVELS = ['Básico', 'Intermediário', 'Avançado'];
 const AVATARS = ['🧑', '👩', '👨', '🧕', '👧', '🦸', '🐨', '🦊', '🐼', '🦉', '🐯', '🐧'];
@@ -33,6 +49,9 @@ export default function Settings({
   const [avatar, setAvatar] = useState(user.avatar);
   const [startDate, setStartDate] = useState(user.start_date);
   const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [theme, setTheme] = useState<ThemePref>(getThemePref);
+  const [targets, setTargets] = useState({ ...DEFAULT_TARGETS, ...(user.targets ?? {}) });
+  const [targetsMsg, setTargetsMsg] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -71,7 +90,7 @@ export default function Settings({
 
   return (
     <div className="settings">
-      <h1>⚙️ Perfil</h1>
+      <h1>⚙️ Perfil <HelpTip topic="profile" /></h1>
 
       <section className="card">
         <h2>Dados</h2>
@@ -119,6 +138,74 @@ export default function Settings({
           <button className="primary" onClick={save} disabled={busy || !dirty || !name.trim()}>
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>🎯 Metas diárias</h2>
+        <p className="muted small">
+          O padrão segue o plano de 1h/dia. Numa fase corrida, reduza — constância vale mais que
+          volume. O dia conclui (e o streak conta) ao bater as 4 metas.
+        </p>
+        <div className="targets-grid">
+          {TARGET_FIELDS.map((f) => (
+            <label key={f.key} className="target-field">
+              {f.label}
+              <input
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={targets[f.key]}
+                onChange={(e) =>
+                  setTargets((t) => ({ ...t, [f.key]: Number(e.target.value) }))
+                }
+              />
+            </label>
+          ))}
+        </div>
+        <div className="row end">
+          {targetsMsg && <span className="small">{targetsMsg}</span>}
+          <button
+            className="primary"
+            onClick={async () => {
+              setTargetsMsg('');
+              const clamped = Object.fromEntries(
+                TARGET_FIELDS.map((f) => [
+                  f.key,
+                  Math.max(f.min, Math.min(f.max, Math.round(targets[f.key]) || f.min)),
+                ])
+              ) as typeof targets;
+              setTargets(clamped);
+              try {
+                const updated = await api.updateUser(user.id, { targets: clamped });
+                onUpdated(updated);
+                setTargetsMsg('✅ Metas salvas.');
+              } catch (e) {
+                setTargetsMsg('❌ ' + errMsg(e));
+              }
+            }}
+          >
+            Salvar metas
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>🎨 Aparência</h2>
+        <span className="field-label" id="set-theme">Tema</span>
+        <div className="chips" role="group" aria-labelledby="set-theme">
+          {THEME_OPTIONS.map((t) => (
+            <button
+              key={t.value}
+              className={`chip ${theme === t.value ? 'sel' : ''}`}
+              onClick={() => {
+                setTheme(t.value);
+                setThemePref(t.value);
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </section>
 
