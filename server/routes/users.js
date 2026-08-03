@@ -1,5 +1,7 @@
 import { db } from '../db.js';
 import { today, daysBetween } from '../lib/srs.js';
+import { idParams, body } from '../lib/schemas.js';
+import { createStarterDeck } from '../lib/starterDeck.js';
 
 const AVATARS = ['🧑', '👩', '👨', '🧕', '👧', '🦸', '🐨', '🦊', '🐼', '🦉'];
 
@@ -33,8 +35,16 @@ export function decorate(u) {
   const phase = phaseFor(dayNum);
   const dow = new Date(today() + 'T00:00:00').getDay();
   const nextMilestone = MILESTONES.find((m) => m.day >= dayNum) ?? null;
+  const { targets_json, ...rest } = u;
+  let targets;
+  try {
+    targets = targets_json ? JSON.parse(targets_json) : null;
+  } catch {
+    targets = null;
+  }
   return {
-    ...u,
+    ...rest,
+    targets,
     day: dayNum,
     phase,
     todayFocus: WEEK_FOCUS[dow],
@@ -55,7 +65,15 @@ export default async function usersRoutes(app) {
     return decorate(u);
   });
 
-  app.post('/api/users', (req, reply) => {
+  app.post('/api/users', {
+    schema: {
+      body: body(['name'], {
+        name: { type: 'string', minLength: 1, maxLength: 60 },
+        level: { type: 'string', maxLength: 30 },
+        avatar: { type: 'string', maxLength: 8 },
+      }),
+    },
+  }, (req, reply) => {
     const { name, level = 'Intermediário', avatar } = req.body ?? {};
     if (!name || !name.trim()) return reply.code(400).send({ error: 'name required' });
     const count = db.prepare('SELECT COUNT(*) c FROM users').get().c;
@@ -64,20 +82,44 @@ export default async function usersRoutes(app) {
       .prepare('INSERT INTO users (name, avatar, level, start_date) VALUES (?, ?, ?, ?)')
       .run(name.trim(), av, level, today());
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
-    return decorate(u);
+    // Every new profile starts with a static deck — first review works in
+    // 2 minutes, no AI required.
+    createStarterDeck(u.id);
+    return reply.code(201).send(decorate(u));
   });
 
   // Update profile fields (name, avatar, level, start_date).
-  app.patch('/api/users/:id', (req, reply) => {
+  app.patch('/api/users/:id', {
+    schema: {
+      params: idParams,
+      body: body([], {
+        name: { type: 'string', minLength: 1, maxLength: 60 },
+        level: { type: 'string', maxLength: 30 },
+        avatar: { type: 'string', maxLength: 8 },
+        start_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        targets: {
+          type: 'object',
+          properties: {
+            listen: { type: 'integer', minimum: 1, maximum: 5 },
+            vocab: { type: 'integer', minimum: 5, maximum: 100 },
+            speak: { type: 'integer', minimum: 1, maximum: 10 },
+            write: { type: 'integer', minimum: 1, maximum: 5 },
+          },
+          additionalProperties: false,
+        },
+      }),
+    },
+  }, (req, reply) => {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!u) return reply.code(404).send({ error: 'user not found' });
 
-    const { name, avatar, level, start_date } = req.body ?? {};
+    const { name, avatar, level, start_date, targets } = req.body ?? {};
     const fields = {};
     if (name && name.trim()) fields.name = name.trim();
     if (avatar) fields.avatar = avatar;
     if (level) fields.level = level;
     if (start_date && /^\d{4}-\d{2}-\d{2}$/.test(start_date)) fields.start_date = start_date;
+    if (targets && typeof targets === 'object') fields.targets_json = JSON.stringify(targets);
 
     const keys = Object.keys(fields);
     if (keys.length) {

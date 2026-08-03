@@ -13,6 +13,7 @@ import configRoutes from './routes/config.js';
 import progressRoutes from './routes/progress.js';
 import historyRoutes from './routes/history.js';
 import recordingsRoutes from './routes/recordings.js';
+import readingRoutes from './routes/reading.js';
 
 // Build and configure the Fastify app (no .listen) so it can be reused in tests
 // via app.inject().
@@ -68,6 +69,7 @@ export async function buildApp(opts = {}) {
   await app.register(progressRoutes);
   await app.register(historyRoutes);
   await app.register(recordingsRoutes);
+  await app.register(readingRoutes);
 
   return app;
 }

@@ -1,29 +1,51 @@
 import { db } from '../db.js';
 import { correctWriting } from '../services/ai.js';
+import { aiFail } from '../lib/aiError.js';
+import { idParams, body } from '../lib/schemas.js';
+import { recordErrors, topCategories, recentErrors } from '../lib/errorBank.js';
+import { levelTarget } from '../lib/level.js';
 
 export default async function writingRoutes(app) {
   // Submit a text for AI correction.
-  app.post('/api/users/:id/writing', async (req, reply) => {
+  app.post('/api/users/:id/writing', {
+    schema: {
+      params: idParams,
+      body: body(['text'], {
+        text: { type: 'string', minLength: 1, maxLength: 8000 },
+        prompt: { type: 'string', maxLength: 300 },
+      }),
+    },
+  }, async (req, reply) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return reply.code(404).send({ error: 'user not found' });
 
     const { prompt = '', text } = req.body ?? {};
     if (!text || !text.trim()) return reply.code(400).send({ error: 'text required' });
 
+    // Feed the learner's recurring error categories into the prompt so the
+    // correction focuses on what THEY keep getting wrong.
+    const recurring = topCategories(user.id, 3).map((c) => c.category);
+
     let feedback;
     try {
-      feedback = await correctWriting(text.trim(), user.level);
+      feedback = await correctWriting(text.trim(), levelTarget(user).prompt, recurring);
     } catch (e) {
-      req.log.error(e);
-      return reply.code(502).send({ error: 'claude failed', detail: String(e.message) });
+      return aiFail(req, reply, e);
     }
 
     const info = db
       .prepare('INSERT INTO writings (user_id, prompt, user_text, feedback_json) VALUES (?, ?, ?, ?)')
       .run(user.id, prompt, text.trim(), JSON.stringify(feedback));
+    recordErrors(user.id, 'writing', feedback.errors);
 
     return reply.code(201).send({ id: info.lastInsertRowid, feedback });
   });
+
+  // Recurring-errors summary (top categories in 30 days + recent examples).
+  app.get('/api/users/:id/errors', (req) => ({
+    top: topCategories(req.params.id, 5),
+    recent: recentErrors(req.params.id, 8),
+  }));
 
   // History (most recent first).
   app.get('/api/users/:id/writing', (req) => {

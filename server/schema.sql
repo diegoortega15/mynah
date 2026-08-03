@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
   streak        INTEGER NOT NULL DEFAULT 0,
   longest_streak INTEGER NOT NULL DEFAULT 0,
   last_active   TEXT,                        -- YYYY-MM-DD
+  freezes       INTEGER NOT NULL DEFAULT 0,  -- streak protections (earned weekly)
+  targets_json  TEXT,                         -- per-user daily targets override
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -34,11 +36,16 @@ CREATE TABLE IF NOT EXISTS phrases (
 CREATE TABLE IF NOT EXISTS cards (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   phrase_id     INTEGER NOT NULL REFERENCES phrases(id) ON DELETE CASCADE,
-  ease          REAL NOT NULL DEFAULT 2.5,
+  ease          REAL NOT NULL DEFAULT 2.5,   -- legacy (SM-2), kept for rollback
   interval_days INTEGER NOT NULL DEFAULT 0,
   reps          INTEGER NOT NULL DEFAULT 0,
   due_date      TEXT NOT NULL,               -- YYYY-MM-DD
-  state         TEXT NOT NULL DEFAULT 'new'  -- new | learning | review
+  state         TEXT NOT NULL DEFAULT 'new', -- new | learning | review | relearning
+  -- FSRS scheduling memory (null on brand-new cards)
+  stability     REAL,
+  difficulty    REAL,
+  lapses        INTEGER NOT NULL DEFAULT 0,
+  last_review   TEXT                          -- YYYY-MM-DD
 );
 
 CREATE TABLE IF NOT EXISTS reviews (
@@ -112,3 +119,41 @@ CREATE TABLE IF NOT EXISTS sessions (
   minutes_total   INTEGER NOT NULL DEFAULT 0,
   UNIQUE(user_id, date)
 );
+
+-- Extensive reading: AI-generated texts at the learner's level (LingQ-style)
+CREATE TABLE IF NOT EXISTS readings (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  theme      TEXT,
+  title      TEXT,
+  text_en    TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_readings_user ON readings(user_id);
+
+-- Error bank: every AI correction (writing/speaking) is stored and categorized
+-- so recurring mistakes become visible and feed back into tutor/writing prompts.
+CREATE TABLE IF NOT EXISTS user_errors (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source      TEXT NOT NULL,                -- writing | speaking
+  original    TEXT NOT NULL,
+  correction  TEXT NOT NULL,
+  explanation TEXT,
+  category    TEXT,                          -- gramática, preposição, tempo verbal…
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_user_errors_user ON user_errors(user_id);
+
+-- Indexes: SQLite does NOT index foreign keys automatically, and the app's
+-- hottest query joins cards→phrases→decks filtered by user + due_date.
+CREATE INDEX IF NOT EXISTS idx_decks_user        ON decks(user_id);
+CREATE INDEX IF NOT EXISTS idx_phrases_deck      ON phrases(deck_id);
+CREATE INDEX IF NOT EXISTS idx_cards_phrase      ON cards(phrase_id);
+CREATE INDEX IF NOT EXISTS idx_cards_due         ON cards(due_date);
+CREATE INDEX IF NOT EXISTS idx_reviews_card      ON reviews(card_id);
+CREATE INDEX IF NOT EXISTS idx_writings_user     ON writings(user_id);
+CREATE INDEX IF NOT EXISTS idx_dialogues_user    ON dialogues(user_id);
+CREATE INDEX IF NOT EXISTS idx_speaking_user     ON speaking_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_recordings_user   ON recordings(user_id);
+CREATE INDEX IF NOT EXISTS idx_ytvideos_user     ON youtube_videos(user_id);

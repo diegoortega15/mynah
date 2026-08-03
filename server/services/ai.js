@@ -7,8 +7,9 @@ import * as gemini from './providers/gemini.js';
 import * as ollama from './providers/ollama.js';
 
 // Route a chat request to the configured provider. messages: [{role, content}].
-export async function chat(messages) {
-  const c = getConfig();
+// `cfgOverride` lets /config/test try a candidate config without persisting it.
+export async function chat(messages, cfgOverride) {
+  const c = cfgOverride || getConfig();
   switch (c.provider) {
     case 'codex-cli':
       return codexCli.chat(messages, c.codex);
@@ -73,7 +74,15 @@ Return ONLY a JSON array: [{"en":"...","pt":"...","context":"..."}]`,
 }
 
 // ── Writing correction ───────────────────────────────────────────────────────
-export async function correctWriting(text, level = 'Intermediário') {
+const ERROR_CATEGORIES =
+  '"gramática" | "tempo verbal" | "preposição" | "artigo" | "vocabulário" | "ortografia" | "ordem das palavras" | "naturalidade"';
+
+// `recurring` = the user's most frequent error categories (from the error
+// bank) so the tutor watches for exactly what this learner keeps getting wrong.
+export async function correctWriting(text, level = 'Intermediário', recurring = []) {
+  const recurringNote = recurring.length
+    ? `\nThis learner's recurring error categories: ${recurring.join(', ')} — pay special attention to those.`
+    : '';
   const messages = [
     {
       role: 'system',
@@ -82,12 +91,12 @@ export async function correctWriting(text, level = 'Intermediário') {
     },
     {
       role: 'user',
-      content: `Correct the text from a ${level} Brazilian professional (grammar, word choice, naturalness).
+      content: `Correct the text from a ${level} Brazilian professional (grammar, word choice, naturalness).${recurringNote}
 
 Return ONLY this JSON:
 {
   "corrected": "full text with mistakes fixed, minimal changes",
-  "errors": [{"original":"wrong bit","correction":"fixed bit","explanation":"short why, in Brazilian Portuguese"}],
+  "errors": [{"original":"wrong bit","correction":"fixed bit","explanation":"short why, in Brazilian Portuguese","category":${ERROR_CATEGORIES}}],
   "rewrite": "a more natural, professional native-sounding version",
   "comment": "one short encouraging note in Brazilian Portuguese"
 }
@@ -185,7 +194,7 @@ Give constructive feedback. Return ONLY this JSON (explanations in Brazilian Por
   "comment": "one short encouraging overall note",
   "strengths": ["what they did well", "..."],
   "improvements": ["specific, actionable things to improve", "..."],
-  "corrections": [{"original":"what they said (EN)","better":"more natural/correct (EN)","why":"short reason in PT"}],
+  "corrections": [{"original":"what they said (EN)","better":"more natural/correct (EN)","why":"short reason in PT","category":${ERROR_CATEGORIES}}],
   "score": 0
 }
 "score" is 0–100 for the content/clarity of what was said.`,
@@ -221,6 +230,113 @@ Return ONLY a JSON array: [{"en":"...","pt":"Brazilian Portuguese translation"}]
     .map((x) => ({ en: String(x.en).trim(), pt: String(x.pt ?? '').trim() }));
 }
 
+// ── Extensive reading ────────────────────────────────────────────────────────
+export async function generateReading(level = 'Intermediário', theme = '') {
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You write engaging short texts for English learners (extensive reading). Always answer with raw JSON only, no markdown.',
+    },
+    {
+      role: 'user',
+      content: `Write a short, genuinely interesting text for a ${level} Brazilian professional${theme ? ` about "${theme}"` : ' about work, career or technology (pick something fresh)'}. 180-250 words, 3-4 paragraphs, natural modern English. It can be a story, an opinion piece or practical advice — extensive reading works when the reader WANTS to keep reading.
+
+Return ONLY this JSON:
+{"title":"short catchy title (EN)","text":"the full text with \\n\\n between paragraphs"}`,
+    },
+  ];
+  const j = await askJson(messages);
+  const text = String(j.text ?? '').trim();
+  if (!text) throw new Error('empty reading');
+  return { title: String(j.title ?? (theme || 'Reading')), text };
+}
+
+// Word-in-context lookup (1-click dictionary for the reading tab).
+export async function lookupWord(word, sentence) {
+  const out = await chat([
+    {
+      role: 'system',
+      content:
+        'You are a dictionary for Brazilian learners of English. Given a word and the sentence it appears in, answer with ONLY the Brazilian Portuguese meaning OF THE WORD AS USED IN THAT SENTENCE — 2 to 6 words, no notes, no quotes.',
+    },
+    { role: 'user', content: `Word: "${word}"\nSentence: "${sentence}"` },
+  ]);
+  return String(out).trim().replace(/^["']|["']$/g, '');
+}
+
+// ── Roleplay with objective (Fases 2-3 do plano) ─────────────────────────────
+export async function roleplayScenario(level = 'Intermediário', theme = '') {
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You design workplace roleplay exercises for English learners. Always answer with raw JSON only, no markdown.',
+    },
+    {
+      role: 'user',
+      content: `Create a workplace roleplay scenario for a ${level} Brazilian learner${theme ? ` about "${theme}"` : ''}. The learner plays themselves; the AI plays the other character. Give the learner a CONCRETE objective to achieve through conversation (negotiate a deadline, convince a manager, handle an unhappy client, ask for a raise...). Vary the situations.
+
+Return ONLY this JSON:
+{"title":"short title (EN)","scenario":"2-3 sentence setup in Brazilian Portuguese","ai_role":"who the AI plays (EN, short)","objective":"the learner's goal in Brazilian Portuguese, specific and checkable","opening":"the AI character's first line (EN, natural spoken)"}`,
+    },
+  ];
+  const j = await askJson(messages);
+  return {
+    title: String(j.title ?? 'Roleplay'),
+    scenario: String(j.scenario ?? ''),
+    ai_role: String(j.ai_role ?? 'a colleague'),
+    objective: String(j.objective ?? ''),
+    opening: String(j.opening ?? 'Hi! Do you have a minute?'),
+  };
+}
+
+export async function roleplayTurn(history, { level = 'Intermediário', scenario } = {}) {
+  const system = `You are playing a character in a workplace roleplay with a ${level} Brazilian English learner.
+Roleplay: ${scenario?.title ?? ''} — you play: ${scenario?.ai_role ?? 'a colleague'}. The learner's objective: ${scenario?.objective ?? ''}.
+Rules for every reply:
+- Stay firmly in character; natural spoken English, at most 2 short sentences per turn (real dialogue is brief — the learner should talk more than you).
+- Do NOT correct the learner's English during the roleplay — corrections come in the final evaluation. Keep the conversation moving instead.
+- Offer realistic resistance: the learner must WORK for the objective (push back once or twice before conceding, ask for justification).
+- Never break character, never output JSON.`;
+  const reply = await chat([{ role: 'system', content: system }, ...history]);
+  return { reply: String(reply ?? '').trim() };
+}
+
+export async function roleplayEvaluate(history, { level = 'Intermediário', scenario } = {}) {
+  const convo = history
+    .map((m) => `${m.role === 'user' ? 'LEARNER' : 'CHARACTER'}: ${m.content}`)
+    .join('\n');
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You are an English teacher evaluating a workplace roleplay. Always answer with raw JSON only, no markdown.',
+    },
+    {
+      role: 'user',
+      content: `A ${level} Brazilian learner did this roleplay.
+Objective: ${scenario?.objective ?? ''}
+Conversation:
+"""
+${convo}
+"""
+Evaluate: did the learner achieve the objective? How effective and natural was their English? Be encouraging but honest.
+
+Return ONLY this JSON (comments in Brazilian Portuguese, phrases in English):
+{"achieved":true,"score":0,"feedback":"3-4 sentence assessment in PT-BR","better_phrases":[{"original":"what they said","better":"a more effective/natural version","why":"short reason in PT-BR","category":${ERROR_CATEGORIES}}]}
+"score" is 0-100 (objective + communication quality).`,
+    },
+  ];
+  const j = await askJson(messages);
+  return {
+    achieved: !!j.achieved,
+    score: Number(j.score) || 0,
+    feedback: String(j.feedback ?? ''),
+    better_phrases: Array.isArray(j.better_phrases) ? j.better_phrases : [],
+  };
+}
+
 // Translate a single phrase to Brazilian Portuguese (for YouTube saves).
 export async function translatePhrase(en) {
   const out = await chat([
@@ -234,12 +350,16 @@ export async function translatePhrase(en) {
   return String(out).trim().replace(/^["']|["']$/g, '');
 }
 
-export async function tutorReply(history, { level = 'Intermediário', focus = '' } = {}) {
+export async function tutorReply(history, { level = 'Intermediário', focus = '', recurring = [] } = {}) {
+  const recurringNote = recurring.length
+    ? `\n- This learner's recurring weak spots: ${recurring.join(', ')}. Watch for those specifically.`
+    : '';
   const system = `You are Alex, a friendly and patient English conversation tutor talking with a ${level} Brazilian learner who wants to improve spoken English for work${focus ? ` (today's focus: ${focus})` : ''}.
 Rules for every reply:
-- Keep it SHORT and spoken (1-3 sentences), like a real conversation.
+- BREVITY IS CRITICAL: at most 2 short sentences + 1 short follow-up question (under ~30 words total). Real spoken turns are short — the learner should talk more than you.
+- Never lecture, never list, never give more than one idea per turn.
 - Speak natural English.
-- If the learner makes a notable mistake, gently correct it in one brief aside, then continue.
+- If the learner makes a notable mistake, gently correct it in ONE brief aside (a few words), then continue.${recurringNote}
 - Always end with a follow-up question to keep them talking.
 - Never output JSON or break character.`;
 

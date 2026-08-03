@@ -45,9 +45,11 @@ function mergeKeyed(cur, patch) {
   return merged;
 }
 
-export function saveConfig(patch = {}) {
+// Pure merge of a patch over the saved config (no persistence). Used by
+// /config/test to try a candidate config WITHOUT saving a broken one.
+export function mergeConfig(patch = {}) {
   const cur = getConfig();
-  const next = {
+  return {
     provider: patch.provider || cur.provider,
     claude: { ...cur.claude, ...(patch.claude || {}) },
     codex: { ...cur.codex, ...(patch.codex || {}) },
@@ -56,6 +58,10 @@ export function saveConfig(patch = {}) {
     openai: mergeKeyed(cur.openai, patch.openai),
     gemini: mergeKeyed(cur.gemini, patch.gemini),
   };
+}
+
+export function saveConfig(patch = {}) {
+  const next = mergeConfig(patch);
   writeFileSync(configPath, JSON.stringify(next, null, 2));
   return next;
 }

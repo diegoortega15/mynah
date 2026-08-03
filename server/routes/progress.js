@@ -1,13 +1,31 @@
 import { db } from '../db.js';
 import { today } from '../lib/srs.js';
 import { touchStreak } from '../lib/streak.js';
+import { idParams, body } from '../lib/schemas.js';
 
 // The 4 daily blocks. The day is "complete" only when all are done.
 export const BLOCKS = ['listen', 'vocab', 'speak', 'write'];
 
-// Daily target (count) per block, and the unit shown in the progress label.
+// Default daily target (count) per block, and the unit shown in the label.
 export const TARGETS = { listen: 1, vocab: 20, speak: 2, write: 1 };
 const UNIT = { listen: 'diálogo', vocab: 'cards', speak: 'práticas', write: 'texto' };
+
+// Per-user targets: defaults overridden by users.targets_json (set in Settings).
+export function getTargets(userId) {
+  const row = db.prepare('SELECT targets_json FROM users WHERE id = ?').get(userId);
+  let saved = {};
+  try {
+    saved = JSON.parse(row?.targets_json || '{}');
+  } catch {
+    /* corrupted json → defaults */
+  }
+  const t = { ...TARGETS };
+  for (const b of BLOCKS) {
+    const v = Number(saved[b]);
+    if (Number.isInteger(v) && v > 0) t[b] = v;
+  }
+  return t;
+}
 
 // Blocks the user drives by "doing an action" (increment). Vocab is auto from reviews.
 const INCREMENTABLE = ['listen', 'speak', 'write'];
@@ -42,7 +60,7 @@ function shape(row) {
     doneCount,
     total: BLOCKS.length,
     complete: doneCount === BLOCKS.length,
-    targets: TARGETS,
+    targets: getTargets(row.user_id),
   };
 }
 
@@ -67,7 +85,7 @@ function writeBlock(userId, block, data) {
 export function incBlock(userId, block) {
   const cur = parseBlocks(getSession(userId))[block] || {};
   const count = (cur.count || 0) + 1;
-  const target = TARGETS[block];
+  const target = getTargets(userId)[block];
   const done = count >= target;
   return writeBlock(userId, block, {
     done,
@@ -78,7 +96,7 @@ export function incBlock(userId, block) {
 
 // Vocab progress, computed from today's reviews (target 20, or clearing the queue).
 export function setVocabProgress(userId, { reviewedToday, due }) {
-  const target = TARGETS.vocab;
+  const target = getTargets(userId).vocab;
   const done = reviewedToday >= target || due === 0;
   const info =
     done && due === 0 && reviewedToday < target
@@ -92,7 +110,12 @@ export default async function progressRoutes(app) {
   app.get('/api/users/:id/today', (req) => shape(getSession(req.params.id)));
 
   // Register one action in a block. Body: { block } (listen | speak | write).
-  app.post('/api/users/:id/progress', (req, reply) => {
+  app.post('/api/users/:id/progress', {
+    schema: {
+      params: idParams,
+      body: body(['block'], { block: { type: 'string', enum: ['listen', 'speak', 'write'] } }),
+    },
+  }, (req, reply) => {
     const { block } = req.body ?? {};
     if (!INCREMENTABLE.includes(block))
       return reply.code(400).send({ error: 'invalid block' });

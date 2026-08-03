@@ -1,4 +1,4 @@
-import { getConfig, saveConfig } from '../config.js';
+import { getConfig, saveConfig, mergeConfig } from '../config.js';
 import { chat } from '../services/ai.js';
 
 const OS_LABEL = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
@@ -28,17 +28,21 @@ export default async function configRoutes(app) {
     return { ...redact(saved), detectedOs: OS_LABEL[process.platform] || process.platform };
   });
 
-  // Quick connectivity test against the currently-configured provider.
+  // Quick connectivity test. Tries the candidate config in memory — nothing is
+  // persisted here (a failed test must not leave a broken config saved; the
+  // user saves explicitly with "Salvar IA").
   app.post('/api/config/test', async (req, reply) => {
-    // Persist first so the test uses what the user just picked.
-    if (req.body && Object.keys(req.body).length) saveConfig(req.body);
+    const candidate = mergeConfig(req.body ?? {});
     try {
-      const out = await chat([
-        { role: 'user', content: 'Reply with exactly: OK' },
-      ]);
+      const out = await chat([{ role: 'user', content: 'Reply with exactly: OK' }], candidate);
       return { ok: true, sample: String(out).slice(0, 80) };
     } catch (e) {
-      return reply.code(502).send({ ok: false, error: String(e.message) });
+      req.log.error(e);
+      return reply.code(502).send({
+        ok: false,
+        error:
+          'Não consegui falar com esse provedor. Confira o comando/chave/modelo e se o CLI está logado.',
+      });
     }
   });
 }

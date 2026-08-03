@@ -1,7 +1,11 @@
 import { db } from '../db.js';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { generateDialogue, surpriseDialogue, translatePhrase } from '../services/ai.js';
+import { aiFail } from '../lib/aiError.js';
 import { addPhrase } from '../lib/phrases.js';
+import { ownerOf, requireOwner } from '../lib/ownership.js';
+import { idParams, body } from '../lib/schemas.js';
+import { levelTarget } from '../lib/level.js';
 
 function extractVideoId(url = '') {
   const m = String(url).match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([A-Za-z0-9_-]{11})/);
@@ -53,7 +57,12 @@ async function fetchTitle(vid) {
 
 export default async function listeningRoutes(app) {
   // Generate a dialogue for a theme and store it.
-  app.post('/api/users/:id/listening/generate', async (req, reply) => {
+  app.post('/api/users/:id/listening/generate', {
+    schema: {
+      params: idParams,
+      body: body(['theme'], { theme: { type: 'string', minLength: 1, maxLength: 120 } }),
+    },
+  }, async (req, reply) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return reply.code(404).send({ error: 'user not found' });
 
@@ -62,10 +71,9 @@ export default async function listeningRoutes(app) {
 
     let dialogue;
     try {
-      dialogue = await generateDialogue(theme.trim(), user.level);
+      dialogue = await generateDialogue(theme.trim(), levelTarget(user).prompt);
     } catch (e) {
-      req.log.error(e);
-      return reply.code(502).send({ error: 'claude failed', detail: String(e.message) });
+      return aiFail(req, reply, e);
     }
     if (!dialogue.lines.length) return reply.code(502).send({ error: 'empty dialogue' });
 
@@ -82,10 +90,9 @@ export default async function listeningRoutes(app) {
     if (!user) return reply.code(404).send({ error: 'user not found' });
     let dialogue;
     try {
-      dialogue = await surpriseDialogue(user.level);
+      dialogue = await surpriseDialogue(levelTarget(user).prompt);
     } catch (e) {
-      req.log.error(e);
-      return reply.code(502).send({ error: 'ai failed', detail: String(e.message) });
+      return aiFail(req, reply, e);
     }
     if (!dialogue.lines.length) return reply.code(502).send({ error: 'empty dialogue' });
     const info = db
@@ -95,7 +102,12 @@ export default async function listeningRoutes(app) {
   });
 
   // YouTube: fetch a video's transcript to practise with real audio.
-  app.post('/api/users/:id/youtube', async (req, reply) => {
+  app.post('/api/users/:id/youtube', {
+    schema: {
+      params: idParams,
+      body: body(['url'], { url: { type: 'string', minLength: 5, maxLength: 300 } }),
+    },
+  }, async (req, reply) => {
     const vid = extractVideoId(req.body?.url || '');
     if (!vid) return reply.code(400).send({ error: 'URL do YouTube inválida' });
     const withTimeout = (p, ms) =>
@@ -106,10 +118,11 @@ export default async function listeningRoutes(app) {
       // Force English captions (default track can be another language).
       segs = await withTimeout(YoutubeTranscript.fetchTranscript(vid, { lang: 'en' }), 15000);
     } catch (e) {
+      req.log.error(e);
       return reply.code(502).send({
-        error:
-          'Esse vídeo não tem legendas em inglês (ou legendas disponíveis). Escolha outro vídeo com legendas em inglês.',
-        detail: String(e.message),
+        error: 'no_captions',
+        detail:
+          'Esse vídeo não tem legendas em inglês (ou o YouTube não as liberou). Escolha outro vídeo com legendas em inglês.',
       });
     }
     const chunks = groupSegments(segs);
@@ -154,8 +167,9 @@ export default async function listeningRoutes(app) {
     return { videoId: r.video_id, title: r.title, chunks: JSON.parse(r.chunks_json) };
   });
 
-  // Delete a saved video.
-  app.delete('/api/youtube-videos/:rowId', (req) => {
+  // Delete a saved video (owner only).
+  app.delete('/api/youtube-videos/:rowId', (req, reply) => {
+    if (!requireOwner(reply, ownerOf.youtubeVideo(req.params.rowId), req.query.uid)) return;
     db.prepare('DELETE FROM youtube_videos WHERE id = ?').run(req.params.rowId);
     return { ok: true };
   });
@@ -174,14 +188,24 @@ export default async function listeningRoutes(app) {
     }));
   });
 
-  // Delete a dialogue.
-  app.delete('/api/dialogues/:dialogueId', (req) => {
+  // Delete a dialogue (owner only).
+  app.delete('/api/dialogues/:dialogueId', (req, reply) => {
+    if (!requireOwner(reply, ownerOf.dialogue(req.params.dialogueId), req.query.uid)) return;
     db.prepare('DELETE FROM dialogues WHERE id = ?').run(req.params.dialogueId);
     return { ok: true };
   });
 
   // Save a phrase as a vocab card ("frase do dia"). Translates if no pt given.
-  app.post('/api/users/:id/phrases', async (req, reply) => {
+  app.post('/api/users/:id/phrases', {
+    schema: {
+      params: idParams,
+      body: body(['en'], {
+        en: { type: 'string', minLength: 1, maxLength: 500 },
+        pt: { type: 'string', maxLength: 500 },
+        context: { type: 'string', maxLength: 1000 },
+      }),
+    },
+  }, async (req, reply) => {
     let { en, pt, context } = req.body ?? {};
     if (!en || !en.trim()) return reply.code(400).send({ error: 'en required' });
     if (!pt || !pt.trim()) {

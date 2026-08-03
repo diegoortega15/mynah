@@ -1,38 +1,72 @@
-// SM-2 spaced repetition (the classic Anki algorithm).
+// Spaced repetition via FSRS (ts-fsrs) — the modern scheduler used by Anki.
+// ~20-30% fewer reviews than SM-2 for the same retention, and no "ease hell".
 // rating: 'again' | 'hard' | 'good' | 'easy'
 //
-// Returns the updated scheduling fields for a card.
+// Day-level scheduling (enable_short_term: false): every rating lands on a
+// date, never "in 10 minutes" — the app works in daily sessions, and the UI
+// already requeues 'again' cards within the same session.
+import { fsrs, generatorParameters, createEmptyCard, Rating, State } from 'ts-fsrs';
 
-const Q = { again: 0, hard: 3, good: 4, easy: 5 };
+const RATING = { again: Rating.Again, hard: Rating.Hard, good: Rating.Good, easy: Rating.Easy };
+const STATE_TO_TEXT = {
+  [State.New]: 'new',
+  [State.Learning]: 'learning',
+  [State.Review]: 'review',
+  [State.Relearning]: 'relearning',
+};
+const TEXT_TO_STATE = {
+  new: State.New,
+  learning: State.Learning,
+  review: State.Review,
+  relearning: State.Relearning,
+};
+
+const engine = fsrs(
+  generatorParameters({
+    enable_short_term: false,
+    maximum_interval: 365, // the plan is 90 days; a year cap keeps dates sane
+  })
+);
+
+// Rebuild an FSRS card object from a DB row. Rows migrated from SM-2 carry an
+// approximated stability/difficulty (see db.js backfill); brand-new cards start
+// from createEmptyCard.
+function toFsrsCard(card, now) {
+  if (card.stability == null || !card.state || card.state === 'new') {
+    return createEmptyCard(now);
+  }
+  return {
+    due: new Date((card.due_date || today()) + 'T00:00:00'),
+    stability: card.stability,
+    difficulty: card.difficulty ?? 5,
+    elapsed_days: card.last_review ? Math.max(0, daysBetween(card.last_review, today())) : 0,
+    scheduled_days: card.interval_days ?? 0,
+    reps: card.reps ?? 0,
+    lapses: card.lapses ?? 0,
+    learning_steps: 0,
+    state: TEXT_TO_STATE[card.state] ?? State.Review,
+    last_review: card.last_review ? new Date(card.last_review + 'T00:00:00') : undefined,
+  };
+}
 
 export function schedule(card, rating) {
-  const q = Q[rating];
-  if (q === undefined) throw new Error(`invalid rating: ${rating}`);
+  const grade = RATING[rating];
+  if (grade === undefined) throw new Error(`invalid rating: ${rating}`);
 
-  let ease = card.ease ?? 2.5;
-  let interval = card.interval_days ?? 0;
-  let reps = card.reps ?? 0;
+  const now = new Date();
+  const next = engine.next(toFsrsCard(card, now), now, grade).card;
 
-  if (q < 3) {
-    // Failed → relearn today (stays in today's queue).
-    reps = 0;
-    interval = 0;
-  } else {
-    reps += 1;
-    if (reps === 1) interval = 1;
-    else if (reps === 2) interval = 6;
-    else interval = Math.round(interval * ease);
-
-    if (rating === 'hard') interval = Math.max(1, Math.round(interval * 0.8));
-    if (rating === 'easy') interval = Math.round(interval * 1.3);
-  }
-
-  // SM-2 ease update
-  ease = ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
-  if (ease < 1.3) ease = 1.3;
-
-  const state = q < 3 ? 'learning' : 'review';
-  return { ease: Number(ease.toFixed(2)), interval_days: interval, reps, state };
+  return {
+    ease: card.ease ?? 2.5, // legacy column, kept for rollback
+    // ts-fsrs can exceed maximum_interval slightly on the easy path — clamp.
+    interval_days: Math.min(next.scheduled_days, 365),
+    reps: next.reps,
+    state: STATE_TO_TEXT[next.state] ?? 'review',
+    stability: Number(next.stability.toFixed(4)),
+    difficulty: Number(next.difficulty.toFixed(4)),
+    lapses: next.lapses,
+    last_review: today(),
+  };
 }
 
 // Local YYYY-MM-DD (avoids UTC off-by-one in BR timezone).
