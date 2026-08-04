@@ -31,6 +31,8 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
   const [analyzing, setAnalyzing] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [confirmDel, setConfirmDel] = useState<number | null>(null); // recording armed for deletion
+  const [delBusy, setDelBusy] = useState(false);
+  const [camBusy, setCamBusy] = useState(false);
 
   async function loadCatalog() {
     try {
@@ -73,9 +75,12 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
     }
   }
   async function remove(id: number) {
+    if (delBusy) return;
+    setDelBusy(true);
     setConfirmDel(null);
     await api.deleteRecording(id, user.id).catch(() => {});
-    loadCatalog();
+    await loadCatalog();
+    setDelBusy(false);
   }
 
   return (
@@ -97,7 +102,18 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
         </div>
 
         {!stream ? (
-          <button className="primary" onClick={enableCam}>🎥 Ativar câmera e microfone</button>
+          <button
+            className="primary"
+            disabled={camBusy}
+            onClick={async () => {
+              if (camBusy) return;
+              setCamBusy(true);
+              await enableCam();
+              setCamBusy(false);
+            }}
+          >
+            {camBusy ? 'Aguardando permissão…' : '🎥 Ativar câmera e microfone'}
+          </button>
         ) : (
           <>
             <div className="rec-preview">
@@ -148,7 +164,9 @@ export default function RecordSelf({ user, onPractice }: { user: User; onPractic
                   {confirmDel === r.id ? (
                     <>
                       <button className="ghost mini" onClick={() => setConfirmDel(null)}>✕</button>
-                      <button className="danger-btn mini" onClick={() => remove(r.id)}>Excluir?</button>
+                      <button className="danger-btn mini" disabled={delBusy} onClick={() => remove(r.id)}>
+                        {delBusy ? '…' : 'Excluir?'}
+                      </button>
                     </>
                   ) : (
                     <button className="ghost mini del" title="Excluir" aria-label="Excluir gravação" onClick={() => setConfirmDel(r.id)}>🗑</button>

@@ -109,11 +109,12 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [theme, setTheme] = useState('');
   const [busy, setBusy] = useState('');
   const [dialogue, setDialogue] = useState<Dialogue | null>(null);
-  const [saved, setSaved] = useState<Record<number, boolean>>({});
+  const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
   const [past, setPast] = useState<Dialogue[]>([]);
   const [showPt, setShowPt] = useState(false);
   const [confirmDlg, setConfirmDlg] = useState<number | null>(null); // dialogue armed for deletion
+  const [delBusy, setDelBusy] = useState(false);
   const dialogueRef = useRef<HTMLElement | null>(null);
   const scrollPendingRef = useRef(false);
 
@@ -181,11 +182,14 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     return lines[idx].en;
   }
   async function savePhrase(line: DialogueLine, idx: number) {
+    if (saved[idx]) return; // already saved or in flight
+    setSaved((s) => ({ ...s, [idx]: 'saving' }));
     try {
       await api.savePhrase(user.id, { en: line.en, pt: line.pt, context: contextFor(idx) });
       setSaved((s) => ({ ...s, [idx]: true }));
     } catch (e) {
       setErr(errMsg(e));
+      setSaved((s) => ({ ...s, [idx]: false }));
     }
   }
 
@@ -263,7 +267,9 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                 </div>
                 <div className="lineact">
                   <button className="ghost mini" onClick={() => playOne(l.en, { voiceIndex: l.speaker === 'B' ? 1 : 0, rate })}>🔊</button>
-                  <button className="ghost mini" disabled={saved[i]} onClick={() => savePhrase(l, i)}>{saved[i] ? '✓' : '+ card'}</button>
+                  <button className="ghost mini" disabled={!!saved[i]} onClick={() => savePhrase(l, i)}>
+                    {saved[i] === true ? '✓' : saved[i] === 'saving' ? '…' : '+ card'}
+                  </button>
                 </div>
               </li>
             ))}
@@ -284,13 +290,17 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                       <button className="ghost mini" onClick={() => setConfirmDlg(null)}>✕</button>
                       <button
                         className="danger-btn mini"
+                        disabled={delBusy}
                         onClick={async () => {
+                          if (delBusy) return;
+                          setDelBusy(true);
                           setConfirmDlg(null);
                           await api.deleteDialogue(d.id, user.id).catch(() => {});
                           if (dialogue?.id === d.id) { stop(); setDialogue(null); }
-                          loadPast();
+                          await loadPast();
+                          setDelBusy(false);
                         }}
-                      >Excluir?</button>
+                      >{delBusy ? '…' : 'Excluir?'}</button>
                     </>
                   ) : (
                     <>
@@ -319,6 +329,8 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
   const [savedVideos, setSavedVideos] = useState<SavedYoutubeVideo[]>([]);
   const [confirmVid, setConfirmVid] = useState<number | null>(null); // saved video armed for deletion
+  const [vidDelBusy, setVidDelBusy] = useState(false);
+  const [opening, setOpening] = useState<number | null>(null); // saved video being reopened
   const [chunks, setChunks] = useState<TranscriptChunk[] | null>(null);
   const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
@@ -383,6 +395,8 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
 
   // Reopen a saved video from cache (instant — transcript comes from the DB).
   async function openSaved(v: SavedYoutubeVideo) {
+    if (opening !== null) return;
+    setOpening(v.id);
     setErr('');
     setChunks(null);
     setVideoId(null);
@@ -395,6 +409,8 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
       setVideoId(res.videoId);
     } catch (e) {
       setErr(errMsg(e));
+    } finally {
+      setOpening(null);
     }
   }
 
@@ -621,20 +637,24 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
           <ul className="deck-list">
             {savedVideos.map((v) => (
               <li key={v.id}>
-                <button className="linklike" onClick={() => openSaved(v)}>
-                  {v.title || v.videoId}
+                <button className="linklike" disabled={opening !== null} onClick={() => openSaved(v)}>
+                  {opening === v.id ? '⏳ ' : ''}{v.title || v.videoId}
                 </button>
                 {confirmVid === v.id ? (
                   <span className="row" style={{ gap: 8 }}>
                     <button className="ghost mini" onClick={() => setConfirmVid(null)}>✕</button>
                     <button
                       className="danger-btn mini"
+                      disabled={vidDelBusy}
                       onClick={async () => {
+                        if (vidDelBusy) return;
+                        setVidDelBusy(true);
                         setConfirmVid(null);
                         await api.deleteYoutubeVideo(v.id, user.id).catch(() => {});
-                        loadSavedVideos();
+                        await loadSavedVideos();
+                        setVidDelBusy(false);
                       }}
-                    >Excluir?</button>
+                    >{vidDelBusy ? '…' : 'Excluir?'}</button>
                   </span>
                 ) : (
                   <button

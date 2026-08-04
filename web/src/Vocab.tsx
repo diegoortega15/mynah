@@ -64,6 +64,7 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [session, setSession] = useState<ReviewState | null>(null); // review mode
+  const [starting, setStarting] = useState(false);
   const { data: stats } = useStats(user.id);
   const { data: todayData } = useToday(user.id);
   // Daily vocab target comes from the server (configurable per profile).
@@ -100,6 +101,8 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
   }
 
   async function startReview() {
+    if (starting) return;
+    setStarting(true);
     try {
       const cards = await api.getReview(user.id);
       if (!cards.length) {
@@ -109,6 +112,8 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
       setSession({ queue: cards, done: 0 });
     } catch {
       setMsg('❌ Não consegui iniciar a revisão. Verifique a conexão e tente de novo.');
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -136,8 +141,8 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
     <div className="vocab">
       <div className="vocab-head">
         <h1>Vocabulário <HelpTip topic="vocab" /></h1>
-        <button className="primary" onClick={startReview}>
-          ▶ Revisar agora
+        <button className="primary" onClick={startReview} disabled={starting}>
+          {starting ? 'Carregando…' : '▶ Revisar agora'}
         </button>
       </div>
 
@@ -346,6 +351,7 @@ function DeckItem({ uid, deck, onChanged }: { uid: number; deck: Deck; onChanged
   const [cards, setCards] = useState<DeckCard[] | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [confirmCard, setConfirmCard] = useState<number | null>(null); // card armed for deletion
+  const [deleting, setDeleting] = useState(false); // any delete in flight
 
   async function toggle() {
     if (!open && cards === null) {
@@ -358,6 +364,8 @@ function DeckItem({ uid, deck, onChanged }: { uid: number; deck: Deck; onChanged
     setOpen((o) => !o);
   }
   async function removeCard(id: number) {
+    if (deleting) return;
+    setDeleting(true);
     setConfirmCard(null);
     try {
       await api.deleteCard(id, uid);
@@ -365,14 +373,20 @@ function DeckItem({ uid, deck, onChanged }: { uid: number; deck: Deck; onChanged
       onChanged();
     } catch {
       /* deixa o card na lista; o usuário tenta de novo */
+    } finally {
+      setDeleting(false);
     }
   }
   async function removeDeck() {
+    if (deleting) return;
+    setDeleting(true);
     try {
       await api.deleteDeck(deck.id, uid);
       onChanged();
     } catch {
       setConfirmDel(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -399,7 +413,9 @@ function DeckItem({ uid, deck, onChanged }: { uid: number; deck: Deck; onChanged
                   {confirmCard === c.card_id ? (
                     <>
                       <button className="ghost mini" title="Cancelar" onClick={() => setConfirmCard(null)}>✕</button>
-                      <button className="danger-btn mini" title="Confirmar exclusão" onClick={() => removeCard(c.card_id)}>Excluir?</button>
+                      <button className="danger-btn mini" title="Confirmar exclusão" disabled={deleting} onClick={() => removeCard(c.card_id)}>
+                        {deleting ? '…' : 'Excluir?'}
+                      </button>
                     </>
                   ) : (
                     <>
@@ -416,7 +432,9 @@ function DeckItem({ uid, deck, onChanged }: { uid: number; deck: Deck; onChanged
               {confirmDel ? (
                 <>
                   <button className="ghost" onClick={() => setConfirmDel(false)}>Cancelar</button>
-                  <button className="danger-btn" onClick={removeDeck}>Confirmar exclusão do baralho</button>
+                  <button className="danger-btn" disabled={deleting} onClick={removeDeck}>
+                    {deleting ? 'Excluindo…' : 'Confirmar exclusão do baralho'}
+                  </button>
                 </>
               ) : (
                 <button className="danger-btn" onClick={() => setConfirmDel(true)}>Excluir baralho inteiro</button>

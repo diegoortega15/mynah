@@ -18,7 +18,7 @@ interface Lookup {
   word: string;
   sentence: string;
   pt: string | null; // null = loading
-  saved: boolean;
+  saved: boolean | 'saving';
 }
 
 // Extensive reading (LingQ-style): AI text at the learner's dynamic level,
@@ -32,6 +32,7 @@ export default function Reading({ user }: { user: User }) {
   const [err, setErr] = useState('');
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
+  const [delBusy, setDelBusy] = useState(false);
   const lookupCache = useState(() => new Map<string, string>())[0];
 
   // Silence the narration when leaving the tab.
@@ -79,6 +80,8 @@ export default function Reading({ user }: { user: User }) {
   async function onWord(rawWord: string, sentence: string) {
     const word = rawWord.replace(/[^A-Za-z'-]/g, '');
     if (!word) return;
+    // Same word clicked again while its lookup is in flight → ignore (no double AI call).
+    if (lookup && lookup.pt === null && lookup.word === word && lookup.sentence === sentence) return;
     const key = `${word}::${sentence}`;
     const cached = lookupCache.get(key);
     setLookup({ word, sentence, pt: cached ?? null, saved: false });
@@ -95,7 +98,8 @@ export default function Reading({ user }: { user: User }) {
   }
 
   async function saveSentence() {
-    if (!lookup) return;
+    if (!lookup || lookup.saved) return; // saved or in flight
+    setLookup((l) => (l ? { ...l, saved: 'saving' } : l));
     try {
       await api.savePhrase(user.id, {
         en: lookup.sentence,
@@ -104,6 +108,7 @@ export default function Reading({ user }: { user: User }) {
       setLookup((l) => (l ? { ...l, saved: true } : l));
     } catch (e) {
       setErr(errMsg(e));
+      setLookup((l) => (l ? { ...l, saved: false } : l));
     }
   }
 
@@ -204,8 +209,8 @@ export default function Reading({ user }: { user: User }) {
                 {ttsSupported && (
                   <button className="ghost mini" onClick={() => playOne(lookup.sentence)}>🔊 frase</button>
                 )}
-                <button className="ghost mini" disabled={lookup.saved} onClick={saveSentence}>
-                  {lookup.saved ? '✓ salvo' : '+ card (frase)'}
+                <button className="ghost mini" disabled={!!lookup.saved} onClick={saveSentence}>
+                  {lookup.saved === true ? '✓ salvo' : lookup.saved === 'saving' ? '…' : '+ card (frase)'}
                 </button>
                 <button className="ghost mini" onClick={() => setLookup(null)}>✕</button>
               </div>
@@ -235,12 +240,16 @@ export default function Reading({ user }: { user: User }) {
                     <button className="ghost mini" onClick={() => setConfirmDel(null)}>✕</button>
                     <button
                       className="danger-btn mini"
+                      disabled={delBusy}
                       onClick={async () => {
+                        if (delBusy) return;
+                        setDelBusy(true);
                         setConfirmDel(null);
                         await api.deleteReading(r.id, user.id).catch(() => {});
-                        loadSaved();
+                        await loadSaved();
+                        setDelBusy(false);
                       }}
-                    >Excluir?</button>
+                    >{delBusy ? '…' : 'Excluir?'}</button>
                   </span>
                 ) : (
                   <button className="ghost mini del" title="Excluir" onClick={() => setConfirmDel(r.id)}>

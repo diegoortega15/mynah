@@ -52,6 +52,7 @@ export default function Settings({
   const [theme, setTheme] = useState<ThemePref>(getThemePref);
   const [targets, setTargets] = useState({ ...DEFAULT_TARGETS, ...(user.targets ?? {}) });
   const [targetsMsg, setTargetsMsg] = useState('');
+  const [targetsBusy, setTargetsBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -167,7 +168,10 @@ export default function Settings({
           {targetsMsg && <span className="small">{targetsMsg}</span>}
           <button
             className="primary"
+            disabled={targetsBusy}
             onClick={async () => {
+              if (targetsBusy) return;
+              setTargetsBusy(true);
               setTargetsMsg('');
               const clamped = Object.fromEntries(
                 TARGET_FIELDS.map((f) => [
@@ -182,10 +186,12 @@ export default function Settings({
                 setTargetsMsg('✅ Metas salvas.');
               } catch (e) {
                 setTargetsMsg('❌ ' + errMsg(e));
+              } finally {
+                setTargetsBusy(false);
               }
             }}
           >
-            Salvar metas
+            {targetsBusy ? 'Salvando…' : 'Salvar metas'}
           </button>
         </div>
       </section>

@@ -57,6 +57,7 @@ export default function FourThreeTwo({ user, onPractice }: { user: User; onPract
   }
 
   function startRound(idx: number) {
+    if (running) return; // double-tap guard
     setErr('');
     finishingRef.current = false;
     const secs = ROUNDS[idx];
