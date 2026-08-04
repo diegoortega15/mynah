@@ -18,6 +18,7 @@ import type {
   TranscriptChunk,
   SavedYoutubeVideo,
   UserErrorsSummary,
+  ComprehensionQuestion,
   RoleplayScenario,
   RoleplayEval,
   Reading,
@@ -133,6 +134,11 @@ export const api = {
   listDialogues: (uid: number) => req<Dialogue[]>(`/api/users/${uid}/listening`),
   deleteDialogue: (id: number, uid: number) =>
     req<Ok>(`/api/dialogues/${id}?uid=${uid}`, { method: 'DELETE' }),
+  dialogueQuestions: (id: number, uid: number) =>
+    req<{ questions: ComprehensionQuestion[] }>(`/api/dialogues/${id}/questions?uid=${uid}`, {
+      method: 'POST',
+      body: {},
+    }),
   savePhrase: (uid: number, body: { en: string; pt?: string; context?: string }) =>
     req<{ phrase_id: number }>(`/api/users/${uid}/phrases`, { method: 'POST', body }),
 
@@ -177,13 +183,18 @@ export const api = {
 
   // Reading (extensive reading tab)
   generateReading: (uid: number, theme?: string) =>
-    req<{ id: number; title: string; text: string }>(`/api/users/${uid}/reading/generate`, {
+    req<{ id: number; title: string; text: string; questions?: ComprehensionQuestion[] }>(`/api/users/${uid}/reading/generate`, {
       method: 'POST',
       body: { theme },
     }),
   listReadings: (uid: number) => req<Reading[]>(`/api/users/${uid}/readings`),
   deleteReading: (id: number, uid: number) =>
     req<Ok>(`/api/readings/${id}?uid=${uid}`, { method: 'DELETE' }),
+  readingQuestions: (id: number, uid: number) =>
+    req<{ questions: ComprehensionQuestion[] }>(`/api/readings/${id}/questions?uid=${uid}`, {
+      method: 'POST',
+      body: {},
+    }),
   lookup: (uid: number, word: string, sentence: string) =>
     req<{ pt: string }>(`/api/users/${uid}/lookup`, { method: 'POST', body: { word, sentence } }),
 

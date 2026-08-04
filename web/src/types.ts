@@ -71,7 +71,7 @@ export interface DialogueLine {
   en: string;
   pt: string;
 }
-export interface DialogueQuestion {
+export interface ComprehensionQuestion {
   q: string;
   options: string[];
   answer: number; // index of the correct option
@@ -82,7 +82,7 @@ export interface Dialogue {
   theme?: string;
   title: string;
   lines: DialogueLine[];
-  questions?: DialogueQuestion[]; // empty on dialogues created before this feature
+  questions?: ComprehensionQuestion[]; // empty on dialogues created before this feature
   created_at?: string;
 }
 
@@ -191,6 +191,7 @@ export interface Reading {
   theme: string;
   title: string;
   text_en: string;
+  questions?: ComprehensionQuestion[]; // empty on readings created before this feature
   created_at: string;
 }
 

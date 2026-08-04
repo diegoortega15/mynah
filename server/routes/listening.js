@@ -1,6 +1,11 @@
 import { db } from '../db.js';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { generateDialogue, surpriseDialogue, translatePhrase } from '../services/ai.js';
+import {
+  generateDialogue,
+  surpriseDialogue,
+  translatePhrase,
+  generateQuestionsFor,
+} from '../services/ai.js';
 import { aiFail } from '../lib/aiError.js';
 import { addPhrase } from '../lib/phrases.js';
 import { ownerOf, requireOwner } from '../lib/ownership.js';
@@ -206,6 +211,35 @@ export default async function listeningRoutes(app) {
       questions: parse(r.questions_json, []), // dialogues created before this feature have none
       created_at: r.created_at,
     }));
+  });
+
+  // Backfill comprehension questions for a dialogue created before the feature.
+  app.post('/api/dialogues/:dialogueId/questions', async (req, reply) => {
+    const owner = ownerOf.dialogue(req.params.dialogueId);
+    if (!requireOwner(reply, owner, req.query.uid)) return;
+    const d = db
+      .prepare('SELECT lines_json, questions_json FROM dialogues WHERE id = ?')
+      .get(req.params.dialogueId);
+    if (!d) return reply.code(404).send({ error: 'not found' });
+    try {
+      const existing = JSON.parse(d.questions_json || '[]');
+      if (existing.length) return { questions: existing }; // already has them
+    } catch {
+      /* corrupted → regenerate */
+    }
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(owner);
+    const text = JSON.parse(d.lines_json)
+      .map((l) => `${l.speaker}: ${l.en}`)
+      .join('\n');
+    let questions;
+    try {
+      questions = await generateQuestionsFor(text, levelTarget(user));
+    } catch (e) {
+      return aiFail(req, reply, e);
+    }
+    db.prepare('UPDATE dialogues SET questions_json = ? WHERE id = ?')
+      .run(JSON.stringify(questions), req.params.dialogueId);
+    return { questions };
   });
 
   // Delete a dialogue (owner only).

@@ -36,6 +36,7 @@ addColumnIfMissing('recordings', 'feedback_json', 'TEXT');
 addColumnIfMissing('users', 'freezes', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'targets_json', 'TEXT');
 addColumnIfMissing('dialogues', 'questions_json', 'TEXT');
+addColumnIfMissing('readings', 'questions_json', 'TEXT');
 
 // Levels migrated from the old PT-BR labels to the CEFR scale (A1…C2).
 db.exec(`

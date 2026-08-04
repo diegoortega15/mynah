@@ -4,12 +4,12 @@ import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
 import HelpTip from './HelpTip.jsx';
 import { fmtAgo } from './format.js';
+import ComprehensionQuiz from './ComprehensionQuiz.jsx';
 import { useToday, useRefreshDay } from './queries.js';
 import type {
   User,
   Dialogue,
   DialogueLine,
-  DialogueQuestion,
   TranscriptChunk,
   SavedYoutubeVideo,
 } from './types';
@@ -56,65 +56,6 @@ const fmtTime = (s: number) => {
 // How many lines ahead of the current one to translate in advance (so the PT is
 // already ready by the time playback reaches each line).
 const LOOKAHEAD = 2;
-
-// Optional comprehension check shown AFTER the dialogue, collapsed by default.
-// Listening stays the focus: nothing is graded, nothing is required — it just
-// answers "did I really understand, or did the audio wash over me?".
-function DialogueQuiz({ questions }: { questions: DialogueQuestion[] }) {
-  const [picked, setPicked] = useState<Record<number, number>>({});
-
-  const answered = Object.keys(picked).length;
-  const right = questions.filter((q, i) => picked[i] === q.answer).length;
-
-  return (
-    <details className="quiz">
-      <summary>
-        ✅ Testar se entendi <span className="muted small">(opcional, {questions.length} perguntas)</span>
-      </summary>
-      <p className="muted small">
-        Sem nota e sem pressa — é só um espelho pra saber se o sentido chegou. Se errar, ouça de novo
-        a fala citada.
-      </p>
-      {questions.map((q, qi) => {
-        const chosen = picked[qi];
-        const done = chosen !== undefined;
-        return (
-          <div key={qi} className="quiz-q">
-            <p className="quiz-title" lang="en">
-              {qi + 1}. {q.q}
-            </p>
-            <div className="quiz-opts">
-              {q.options.map((o, oi) => {
-                const isRight = oi === q.answer;
-                const cls = !done ? '' : isRight ? 'ok' : chosen === oi ? 'bad' : '';
-                return (
-                  <button
-                    key={oi}
-                    className={`quiz-opt ${cls}`}
-                    disabled={done}
-                    lang="en"
-                    onClick={() => setPicked((p) => ({ ...p, [qi]: oi }))}
-                  >
-                    {done && isRight ? '✓ ' : done && chosen === oi ? '✗ ' : ''}
-                    {o}
-                  </button>
-                );
-              })}
-            </div>
-            {done && q.why && <p className="muted small">💡 {q.why}</p>}
-          </div>
-        );
-      })}
-      {answered === questions.length && (
-        <p className="comment">
-          {right === questions.length
-            ? '🎉 Entendeu tudo! Pode partir para o próximo áudio.'
-            : `Você acertou ${right}/${questions.length}. Vale ouvir de novo prestando atenção nas falas citadas — reouvir entendendo vale mais que ouvir mais uma vez no automático.`}
-        </p>
-      )}
-    </details>
-  );
-}
 
 const THEMES = ['Daily standup', 'Negotiating a deadline', 'Job interview', 'Client kickoff', 'Giving feedback'];
 
@@ -182,6 +123,7 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [showPt, setShowPt] = useState(false);
   const [confirmDlg, setConfirmDlg] = useState<number | null>(null); // dialogue armed for deletion
   const [delBusy, setDelBusy] = useState(false);
+  const [qBusy, setQBusy] = useState(false);
   const dialogueRef = useRef<HTMLElement | null>(null);
   const scrollPendingRef = useRef(false);
 
@@ -342,8 +284,31 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
             ))}
           </ul>
 
-          {dialogue.questions && dialogue.questions.length > 0 && (
-            <DialogueQuiz key={dialogue.id} questions={dialogue.questions} />
+          {dialogue.questions && dialogue.questions.length > 0 ? (
+            <ComprehensionQuiz key={dialogue.id} questions={dialogue.questions} />
+          ) : (
+            // Dialogue created before the feature: generate on demand.
+            <div className="row end" style={{ marginTop: 12 }}>
+              <button
+                className="ghost mini"
+                disabled={qBusy}
+                onClick={async () => {
+                  if (qBusy) return;
+                  setQBusy(true);
+                  try {
+                    const { questions } = await api.dialogueQuestions(dialogue.id, user.id);
+                    setDialogue((d) => (d ? { ...d, questions } : d));
+                    loadPast();
+                  } catch (e) {
+                    setErr(errMsg(e));
+                  } finally {
+                    setQBusy(false);
+                  }
+                }}
+              >
+                {qBusy ? 'Criando perguntas…' : '✅ Gerar perguntas de compreensão'}
+              </button>
+            </div>
           )}
         </section>
       )}

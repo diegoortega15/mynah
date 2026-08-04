@@ -147,6 +147,32 @@ function normalizeQuestions(raw) {
     }));
 }
 
+// Backfill: build the same 3 questions for content that already exists
+// (dialogues/readings created before the feature). One call, on demand.
+export async function generateQuestionsFor(content, level = 'B1') {
+  const L = lv(level);
+  const j = await askJson([
+    {
+      role: 'system',
+      content:
+        'You write comprehension checks for English learners. Always answer with raw JSON only, no markdown.',
+    },
+    {
+      role: 'user',
+      content: `Read the English content below (a dialogue or a text).
+${QUESTIONS_RULES.replace('dialogue', 'content')}
+
+Return ONLY this JSON: {${QUESTIONS_SPEC}}
+
+Content:
+"""${content}"""${L.block}`,
+    },
+  ]);
+  const questions = normalizeQuestions(j.questions);
+  if (!questions.length) throw new Error('no questions generated');
+  return questions;
+}
+
 export async function generateDialogue(theme, level = 'B1') {
   const L = lv(level);
   const messages = [
@@ -283,14 +309,20 @@ export async function generateReading(level = 'B1', theme = '') {
       role: 'user',
       content: `Write a short, genuinely interesting text for a ${L.inline} Brazilian professional${theme ? ` about "${theme}"` : ' about work, career or technology (pick something fresh)'}. 180-250 words, 3-4 paragraphs, natural modern English. It can be a story, an opinion piece or practical advice — extensive reading works when the reader WANTS to keep reading.
 
+${QUESTIONS_RULES.replace('dialogue', 'text')}
+
 Return ONLY this JSON:
-{"title":"short catchy title (EN)","text":"the full text with \\n\\n between paragraphs"}${L.block}`,
+{"title":"short catchy title (EN)","text":"the full text with \\n\\n between paragraphs",${QUESTIONS_SPEC}}${L.block}`,
     },
   ];
   const j = await askJson(messages);
   const text = String(j.text ?? '').trim();
   if (!text) throw new Error('empty reading');
-  return { title: String(j.title ?? (theme || 'Reading')), text };
+  return {
+    title: String(j.title ?? (theme || 'Reading')),
+    text,
+    questions: normalizeQuestions(j.questions),
+  };
 }
 
 // Word-in-context lookup (1-click dictionary for the reading tab).

@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import { generateReading, lookupWord } from '../services/ai.js';
+import { generateReading, lookupWord, generateQuestionsFor } from '../services/ai.js';
 import { aiFail } from '../lib/aiError.js';
 import { idParams, body } from '../lib/schemas.js';
 import { requireOwner } from '../lib/ownership.js';
@@ -19,8 +19,13 @@ export default async function readingRoutes(app) {
       return aiFail(req, reply, e);
     }
     const info = db
-      .prepare('INSERT INTO readings (user_id, theme, title, text_en) VALUES (?, ?, ?, ?)')
-      .run(user.id, String(req.body?.theme ?? ''), r.title, r.text);
+      .prepare(
+        'INSERT INTO readings (user_id, theme, title, text_en, questions_json) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(
+        user.id, String(req.body?.theme ?? ''), r.title, r.text,
+        JSON.stringify(r.questions ?? [])
+      );
     return reply.code(201).send({ id: info.lastInsertRowid, ...r });
   });
 
@@ -28,10 +33,43 @@ export default async function readingRoutes(app) {
   app.get('/api/users/:id/readings', (req) =>
     db
       .prepare(
-        'SELECT id, theme, title, text_en, created_at FROM readings WHERE user_id = ? ORDER BY id DESC LIMIT 30'
+        'SELECT id, theme, title, text_en, questions_json, created_at FROM readings WHERE user_id = ? ORDER BY id DESC LIMIT 30'
       )
       .all(req.params.id)
+      .map(({ questions_json, ...rest }) => {
+        let questions;
+        try {
+          questions = questions_json ? JSON.parse(questions_json) : [];
+        } catch {
+          questions = []; // readings created before this feature
+        }
+        return { ...rest, questions };
+      })
   );
+
+  // Backfill comprehension questions for a reading created before the feature.
+  app.post('/api/readings/:rid/questions', async (req, reply) => {
+    const row = db
+      .prepare('SELECT user_id, text_en, questions_json FROM readings WHERE id = ?')
+      .get(req.params.rid);
+    if (!requireOwner(reply, row?.user_id ?? null, req.query.uid)) return;
+    try {
+      const existing = JSON.parse(row.questions_json || '[]');
+      if (existing.length) return { questions: existing }; // already has them
+    } catch {
+      /* corrupted → regenerate */
+    }
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+    let questions;
+    try {
+      questions = await generateQuestionsFor(row.text_en, levelTarget(user));
+    } catch (e) {
+      return aiFail(req, reply, e);
+    }
+    db.prepare('UPDATE readings SET questions_json = ? WHERE id = ?')
+      .run(JSON.stringify(questions), req.params.rid);
+    return { questions };
+  });
 
   // Delete a reading (owner only).
   app.delete('/api/readings/:rid', (req, reply) => {

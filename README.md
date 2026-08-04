@@ -51,6 +51,7 @@ Multiusuário (ideal pra casal/família), sem nuvem, seus dados ficam num SQLite
 - 🗂️ **Vocabulário com FSRS** — o agendador moderno do Anki (~25% menos revisões que o SM-2 clássico para a mesma retenção). Cards são **frases inteiras em contexto**, com áudio — nunca palavras soltas. Revisão com **4 modos intercalados**: traduzir, ✂️ completar a lacuna, 🇧🇷→🇬🇧 produzir a frase e 👂 só de ouvido.
 - 🎧 **Listening** — diálogos gerados no seu nível narrados com **duas vozes** (pausar/retomar/parar), e **YouTube com transcrição sincronizada**: legenda acompanha o vídeo, timestamps clicáveis, tradução com *lookahead* e "+ card" direto da fala.
 - 📖 **Leitura extensiva** — textos gerados no seu nível com **lookup de 1 clique** (o significado da palavra *naquela frase*) e mineração de frases para o baralho, estilo LingQ.
+- ✅ **Checagem de compreensão** — diálogos e textos vêm com 3 perguntas opcionais (geradas na mesma chamada, sem custo extra) para combater a “escuta/leitura passiva”.
 - 🗣️ **Fala** — **Shadowing** com nota 0–100%, **Tutor de conversa** por voz ou texto, **🎭 Roleplay com objetivo** (cenário com meta concreta + avaliação por rubrica no final) e **4·3·2** (a mesma história 3× com menos tempo — fluência na marra).
 - ✍️ **Escrita com correção por IA** — texto corrigido, erros explicados em PT (e **categorizados num banco de erros** que realimenta o tutor e o corretor), versão mais natural e comentário.
 - 📈 **Nível dinâmico (i+1)** — a dificuldade do conteúdo gerado sobe (CEFR A2→C1) conforme seu desempenho real em cards, escrita e fala.

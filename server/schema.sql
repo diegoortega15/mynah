@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS readings (
   theme      TEXT,
   title      TEXT,
   text_en    TEXT NOT NULL,
+  questions_json TEXT,                       -- [{q, options[], answer, why}] comprehension check
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_readings_user ON readings(user_id);

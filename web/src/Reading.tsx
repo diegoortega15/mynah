@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import HelpTip from './HelpTip.jsx';
-import type { User, Reading as ReadingEntry } from './types';
+import ComprehensionQuiz from './ComprehensionQuiz.jsx';
+import type { User, Reading as ReadingEntry, ComprehensionQuestion } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -25,7 +26,12 @@ interface Lookup {
 // 1-click word lookup in context, and sentence mining straight to the deck.
 export default function Reading({ user }: { user: User }) {
   const { speakLines, playOne, stop, pause, resume, isPlaying, paused, ttsSupported } = useSpeech();
-  const [current, setCurrent] = useState<{ title: string; text: string } | null>(null);
+  const [current, setCurrent] = useState<{
+    title: string;
+    text: string;
+    id?: number;
+    questions?: ComprehensionQuestion[];
+  } | null>(null);
   const [saved, setSaved] = useState<ReadingEntry[]>([]);
   const [theme, setTheme] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,6 +39,7 @@ export default function Reading({ user }: { user: User }) {
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
   const [delBusy, setDelBusy] = useState(false);
+  const [qBusy, setQBusy] = useState(false);
   const lookupCache = useState(() => new Map<string, string>())[0];
 
   // Silence the narration when leaving the tab.
@@ -67,7 +74,7 @@ export default function Reading({ user }: { user: User }) {
     stop();
     try {
       const r = await api.generateReading(user.id, th || undefined);
-      setCurrent({ title: r.title, text: r.text });
+      setCurrent({ title: r.title, text: r.text, id: r.id, questions: r.questions });
       setTheme('');
       loadSaved();
     } catch (e) {
@@ -198,6 +205,35 @@ export default function Reading({ user }: { user: User }) {
           </div>
           {current.text.split(/\n{2,}/).map((p, i) => renderParagraph(p, i))}
 
+          {current.questions && current.questions.length > 0 ? (
+            <ComprehensionQuiz key={current.title} questions={current.questions} kind="texto" />
+          ) : (
+            current.id !== undefined && (
+              // Reading created before the feature: generate on demand.
+              <div className="row end" style={{ marginTop: 12 }}>
+                <button
+                  className="ghost mini"
+                  disabled={qBusy}
+                  onClick={async () => {
+                    if (qBusy || current.id === undefined) return;
+                    setQBusy(true);
+                    try {
+                      const { questions } = await api.readingQuestions(current.id, user.id);
+                      setCurrent((c) => (c ? { ...c, questions } : c));
+                      loadSaved();
+                    } catch (e) {
+                      setErr(errMsg(e));
+                    } finally {
+                      setQBusy(false);
+                    }
+                  }}
+                >
+                  {qBusy ? 'Criando perguntas…' : '✅ Gerar perguntas de compreensão'}
+                </button>
+              </div>
+            )
+          )}
+
           {lookup && (
             <div className="lookup-card">
               <div className="row between">
@@ -230,7 +266,7 @@ export default function Reading({ user }: { user: User }) {
                   onClick={() => {
                     stop();
                     setLookup(null);
-                    setCurrent({ title: r.title, text: r.text_en });
+                    setCurrent({ title: r.title, text: r.text_en, id: r.id, questions: r.questions });
                   }}
                 >
                   {r.title}

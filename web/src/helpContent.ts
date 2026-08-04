@@ -87,6 +87,8 @@ export const TOPICS: Topic[] = [
       { b: '+ card (frase):', t: 'salva a frase inteira no seu Vocabulário — mineração de frases, como no LingQ/Migaku.' },
       { b: '🔊:', t: 'ouça o texto inteiro ou só a frase da palavra consultada.' },
       { b: 'Leituras anteriores:', t: 'ficam salvas para reler quando quiser.' },
+      { b: '✅ Testar se entendi:', t: 'no fim do texto há 3 perguntas de compreensão (opcionais, recolhidas). Errar tudo costuma significar que o texto está acima do seu nível — vale baixar um nível no Perfil.' },
+      { b: 'Conteúdo antigo:', t: 'textos e diálogos criados antes desta função ganham um botão “✅ Gerar perguntas de compreensão”. Também dá para preencher tudo de uma vez com `npm run backfill:questions`.' },
       { b: 'Atividade extra:', t: 'não conta bloco do dia — é além da sua 1h, sem culpa.' },
     ],
   },
