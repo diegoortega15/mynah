@@ -28,7 +28,7 @@ export default async function writingRoutes(app) {
 
     let feedback;
     try {
-      feedback = await correctWriting(text.trim(), levelTarget(user).prompt, recurring);
+      feedback = await correctWriting(text.trim(), levelTarget(user), recurring);
     } catch (e) {
       return aiFail(req, reply, e);
     }

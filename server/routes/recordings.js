@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ownerOf, requireOwner } from '../lib/ownership.js';
 import { recordErrors } from '../lib/errorBank.js';
+import { levelTarget } from '../lib/level.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const recDir = join(__dirname, '..', 'data', 'recordings');
@@ -69,10 +70,10 @@ export default async function recordingsRoutes(app) {
     const transcript = String(req.body?.transcript ?? r.transcript ?? '').trim();
     if (!transcript) return reply.code(400).send({ error: 'sem transcrição para analisar' });
 
-    const user = db.prepare('SELECT level FROM users WHERE id = ?').get(r.user_id);
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(r.user_id);
     let fb;
     try {
-      fb = await analyzeSpeech(transcript, user?.level, r.prompt);
+      fb = await analyzeSpeech(transcript, user ? levelTarget(user) : undefined, r.prompt);
     } catch (e) {
       return aiFail(req, reply, e);
     }

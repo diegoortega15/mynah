@@ -35,6 +35,14 @@ addColumnIfMissing('recordings', 'feedback_json', 'TEXT');
 
 addColumnIfMissing('users', 'freezes', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'targets_json', 'TEXT');
+addColumnIfMissing('dialogues', 'questions_json', 'TEXT');
+
+// Levels migrated from the old PT-BR labels to the CEFR scale (A1…C2).
+db.exec(`
+  UPDATE users SET level = 'A2' WHERE level = 'Básico';
+  UPDATE users SET level = 'B1' WHERE level = 'Intermediário';
+  UPDATE users SET level = 'C1' WHERE level = 'Avançado';
+`);
 
 // FSRS migration (SM-2 → FSRS): new scheduling columns + one-time backfill.
 addColumnIfMissing('cards', 'stability', 'REAL');

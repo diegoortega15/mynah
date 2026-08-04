@@ -2,6 +2,7 @@ import { db } from '../db.js';
 import { today, daysBetween } from '../lib/srs.js';
 import { idParams, body } from '../lib/schemas.js';
 import { createStarterDeck } from '../lib/starterDeck.js';
+import { levelTarget } from '../lib/level.js';
 
 const AVATARS = ['🧑', '👩', '👨', '🧕', '👧', '🦸', '🐨', '🦊', '🐼', '🦉'];
 
@@ -74,7 +75,7 @@ export default async function usersRoutes(app) {
       }),
     },
   }, (req, reply) => {
-    const { name, level = 'Intermediário', avatar } = req.body ?? {};
+    const { name, level = 'B1', avatar } = req.body ?? {};
     if (!name || !name.trim()) return reply.code(400).send({ error: 'name required' });
     const count = db.prepare('SELECT COUNT(*) c FROM users').get().c;
     const av = avatar || AVATARS[count % AVATARS.length];
@@ -138,9 +139,12 @@ export default async function usersRoutes(app) {
     return { ok: true };
   });
 
-  // Aggregate stats for the profile screen.
-  app.get('/api/users/:id/profile-stats', (req) => {
+  // Aggregate stats for the profile screen (+ the level the AI is currently
+  // targeting, so the learner understands why content feels easy/hard).
+  app.get('/api/users/:id/profile-stats', (req, reply) => {
     const uid = req.params.id;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
+    if (!user) return reply.code(404).send({ error: 'user not found' });
     const cards = db
       .prepare(
         `SELECT COUNT(*) c FROM cards c JOIN phrases p ON p.id = c.phrase_id
@@ -157,6 +161,6 @@ export default async function usersRoutes(app) {
     const writings = db.prepare('SELECT COUNT(*) c FROM writings WHERE user_id = ?').get(uid).c;
     const dialogues = db.prepare('SELECT COUNT(*) c FROM dialogues WHERE user_id = ?').get(uid).c;
     const speaking = db.prepare('SELECT COUNT(*) c FROM speaking_logs WHERE user_id = ?').get(uid).c;
-    return { cards, reviews, writings, dialogues, speaking };
+    return { cards, reviews, writings, dialogues, speaking, levelTarget: levelTarget(user).cefr };
   });
 }

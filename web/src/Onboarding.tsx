@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from './api.js';
+import { LEVELS } from './levels.js';
 import type { User } from './types';
-
-const LEVELS = ['Básico', 'Intermediário', 'Avançado'];
 
 export default function Onboarding({
   onCreated,
@@ -12,7 +11,7 @@ export default function Onboarding({
   onCancel: () => void;
 }) {
   const [name, setName] = useState('');
-  const [level, setLevel] = useState('Intermediário');
+  const [level, setLevel] = useState('B1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -45,19 +44,25 @@ export default function Onboarding({
           placeholder="Seu nome"
         />
 
-        <span className="field-label" id="ob-level">Nível de inglês</span>
-        <div className="chips" role="group" aria-labelledby="ob-level">
+        <span className="field-label" id="ob-level">Nível de inglês (CEFR)</span>
+        <div className="level-grid" role="group" aria-labelledby="ob-level">
           {LEVELS.map((l) => (
             <button
               type="button"
-              key={l}
-              className={`chip ${level === l ? 'sel' : ''}`}
-              onClick={() => setLevel(l)}
+              key={l.code}
+              className={`level-opt ${level === l.code ? 'sel' : ''}`}
+              onClick={() => setLevel(l.code)}
             >
-              {l}
+              <span className="lv-code">{l.code}</span>
+              <span className="lv-name">{l.name}</span>
+              <span className="lv-hint muted small">{l.hint}</span>
             </button>
           ))}
         </div>
+        <p className="muted small">
+          Na dúvida, escolha o <strong>mais baixo</strong>: material fácil demais você avança rápido;
+          difícil demais desanima. Dá pra mudar quando quiser no Perfil.
+        </p>
 
         {error && <p className="error">{error}</p>}
 

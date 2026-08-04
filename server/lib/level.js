@@ -1,22 +1,54 @@
 import { db } from '../db.js';
 import { daysBetween, today } from './srs.js';
 
-// Dynamic difficulty (i+1): infer a CEFR-ish target for AI generation from the
+// Dynamic difficulty (i+1): infer a CEFR target for AI generation from the
 // learner's actual performance, so the day-85 dialogue is harder than day-1's.
 // Signals: plan day, recent writing error rate, shadowing scores, review lapses.
 
-const BASE = { Básico: 0, Intermediário: 1, Avançado: 3 };
-// index into this ladder = base + phase progression + performance adjustment
-const LADDER = ['A2', 'B1', 'B1+', 'B2', 'B2+', 'C1'];
+// Full CEFR scale as chosen by the user, with the intermediate "+" rungs the
+// ladder needs to climb smoothly.
+export const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+const LADDER = ['A1', 'A1+', 'A2', 'A2+', 'B1', 'B1+', 'B2', 'B2+', 'C1', 'C1+', 'C2'];
+
+// Where each selectable level starts on the ladder.
+const BASE = { A1: 0, A2: 2, B1: 4, B2: 6, C1: 8, C2: 10 };
+// Profiles created before the CEFR switch used PT-BR labels.
+const LEGACY = { Básico: 'A2', Intermediário: 'B1', Avançado: 'C1' };
+
+// Concrete writing instructions per band — without these the model tends to
+// write "clean corporate English" regardless of the label, which is exactly
+// what makes lower levels feel too hard.
+const GUIDANCE = {
+  A1: 'very short simple sentences (5-8 words), present simple, only the ~500 most frequent words, no idioms, no phrasal verbs',
+  'A1+': 'short simple sentences, present and basic past, top ~800 words, no idioms',
+  A2: 'short everyday sentences, present/past/future simple, top ~1500 words, at most one very common phrasal verb',
+  'A2+': 'simple sentences with basic connectors (and, but, because), top ~2000 words, a few very common phrasal verbs',
+  B1: 'clear everyday language, common tenses, top ~2500 words, common phrasal verbs and a few work collocations; avoid rare idioms',
+  'B1+': 'everyday and routine work language, some complex sentences, common collocations and idioms',
+  B2: 'natural professional English, varied structures, common idioms and phrasal verbs, some nuance',
+  'B2+': 'fluent professional English, richer vocabulary, hedging and register shifts',
+  C1: 'sophisticated natural English, idiomatic, nuanced register, complex structures',
+  'C1+': 'highly idiomatic and nuanced English, subtle connotation',
+  C2: 'near-native English: full idiomatic range, subtlety, humour and cultural references',
+};
 
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+// Normalize whatever is stored in users.level to a CEFR code.
+export function normalizeLevel(level) {
+  const v = String(level ?? '').trim();
+  if (BASE[v.toUpperCase()] !== undefined) return v.toUpperCase();
+  return LEGACY[v] ?? 'B1';
+}
+
 // Returns { cefr, prompt } — `prompt` is the string handed to the AI.
 export function levelTarget(user) {
-  const base = BASE[user.level] ?? 1;
+  const base = BASE[normalizeLevel(user.level)];
   const day = clamp(daysBetween(user.start_date, today()) + 1, 1, 90);
+  // The 90-day plan raises the bar across phases — but only by one ladder rung
+  // per phase, so a beginner never jumps a whole CEFR band by the calendar.
   const phaseBump = day > 60 ? 2 : day > 30 ? 1 : 0;
 
   // Performance adjustment (−1, 0 or +1) from recent signals.
@@ -69,10 +101,15 @@ export function levelTarget(user) {
   }
 
   const adj = clamp(score, -1, 1);
-  const idx = clamp(base + phaseBump + adj, 0, LADDER.length - 1);
+  // Never drift more than one rung below what the learner picked — the level
+  // they chose is a floor they trust.
+  const idx = clamp(base + phaseBump + adj, Math.max(0, base - 1), LADDER.length - 1);
   const cefr = LADDER[idx];
+  // `cefr` goes inline in the prompt ("for a B1 learner"); `guidance` is a
+  // separate instruction block appended at the end — mixing them inline would
+  // break the sentence the model is reading.
   return {
     cefr,
-    prompt: `${cefr} (CEFR) — keep the language ~95% comprehensible at this level, with a few slightly harder words (i+1)`,
+    guidance: `The learner is at this level. Every bit of English you produce (content, examples, corrections) must fit it: ${GUIDANCE[cefr]}. They must understand ~95% of it without a dictionary, with only a few slightly harder items (i+1). Never write above this level.`,
   };
 }

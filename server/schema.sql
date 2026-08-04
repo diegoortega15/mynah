@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
   avatar        TEXT DEFAULT '🧑',
-  level         TEXT NOT NULL DEFAULT 'Intermediário',
+  level         TEXT NOT NULL DEFAULT 'B1',       -- CEFR: A1 A2 B1 B2 C1 C2
   start_date    TEXT NOT NULL,              -- YYYY-MM-DD
   streak        INTEGER NOT NULL DEFAULT 0,
   longest_streak INTEGER NOT NULL DEFAULT 0,
@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS dialogues (
   theme      TEXT,
   title      TEXT,
   lines_json TEXT NOT NULL,                  -- [{speaker, en, pt}]
+  questions_json TEXT,                       -- [{q, options[], answer, why}] comprehension check
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -71,15 +71,20 @@ export default async function listeningRoutes(app) {
 
     let dialogue;
     try {
-      dialogue = await generateDialogue(theme.trim(), levelTarget(user).prompt);
+      dialogue = await generateDialogue(theme.trim(), levelTarget(user));
     } catch (e) {
       return aiFail(req, reply, e);
     }
     if (!dialogue.lines.length) return reply.code(502).send({ error: 'empty dialogue' });
 
     const info = db
-      .prepare('INSERT INTO dialogues (user_id, theme, title, lines_json) VALUES (?, ?, ?, ?)')
-      .run(user.id, theme.trim(), dialogue.title, JSON.stringify(dialogue.lines));
+      .prepare(
+        'INSERT INTO dialogues (user_id, theme, title, lines_json, questions_json) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(
+        user.id, theme.trim(), dialogue.title,
+        JSON.stringify(dialogue.lines), JSON.stringify(dialogue.questions ?? [])
+      );
 
     return reply.code(201).send({ id: info.lastInsertRowid, ...dialogue });
   });
@@ -90,14 +95,19 @@ export default async function listeningRoutes(app) {
     if (!user) return reply.code(404).send({ error: 'user not found' });
     let dialogue;
     try {
-      dialogue = await surpriseDialogue(levelTarget(user).prompt);
+      dialogue = await surpriseDialogue(levelTarget(user));
     } catch (e) {
       return aiFail(req, reply, e);
     }
     if (!dialogue.lines.length) return reply.code(502).send({ error: 'empty dialogue' });
     const info = db
-      .prepare('INSERT INTO dialogues (user_id, theme, title, lines_json) VALUES (?, ?, ?, ?)')
-      .run(user.id, dialogue.theme, dialogue.title, JSON.stringify(dialogue.lines));
+      .prepare(
+        'INSERT INTO dialogues (user_id, theme, title, lines_json, questions_json) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(
+        user.id, dialogue.theme, dialogue.title,
+        JSON.stringify(dialogue.lines), JSON.stringify(dialogue.questions ?? [])
+      );
     return reply.code(201).send({ id: info.lastInsertRowid, ...dialogue });
   });
 
@@ -177,13 +187,23 @@ export default async function listeningRoutes(app) {
   // List a user's dialogues.
   app.get('/api/users/:id/listening', (req) => {
     const rows = db
-      .prepare('SELECT id, theme, title, lines_json, created_at FROM dialogues WHERE user_id = ? ORDER BY id DESC LIMIT 30')
+      .prepare(
+        'SELECT id, theme, title, lines_json, questions_json, created_at FROM dialogues WHERE user_id = ? ORDER BY id DESC LIMIT 30'
+      )
       .all(req.params.id);
+    const parse = (json, fallback) => {
+      try {
+        return json ? JSON.parse(json) : fallback;
+      } catch {
+        return fallback;
+      }
+    };
     return rows.map((r) => ({
       id: r.id,
       theme: r.theme,
       title: r.title,
-      lines: JSON.parse(r.lines_json),
+      lines: parse(r.lines_json, []),
+      questions: parse(r.questions_json, []), // dialogues created before this feature have none
       created_at: r.created_at,
     }));
   });

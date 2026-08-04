@@ -71,9 +71,14 @@ export const api = {
   ) => req<User>(`/api/users/${id}`, { method: 'PATCH', body }),
   deleteUser: (id: number) => req<Ok>(`/api/users/${id}`, { method: 'DELETE' }),
   profileStats: (id: number) =>
-    req<{ cards: number; reviews: number; writings: number; dialogues: number; speaking: number }>(
-      `/api/users/${id}/profile-stats`
-    ),
+    req<{
+      cards: number;
+      reviews: number;
+      writings: number;
+      dialogues: number;
+      speaking: number;
+      levelTarget?: string;
+    }>(`/api/users/${id}/profile-stats`),
 
   listDecks: (uid: number) => req<Deck[]>(`/api/users/${uid}/decks`),
   generatePack: (uid: number, body: { theme: string; count?: number }) =>

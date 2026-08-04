@@ -28,7 +28,7 @@ describe('routes (via app.inject)', () => {
     const created = await app.inject({
       method: 'POST',
       url: '/api/users',
-      payload: { name: 'Teste', level: 'Intermediário' },
+      payload: { name: 'Teste', level: 'B1' },
     });
     expect(created.statusCode).toBe(201);
     const { id } = created.json();

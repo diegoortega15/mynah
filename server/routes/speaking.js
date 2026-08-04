@@ -34,7 +34,7 @@ export default async function speakingRoutes(app) {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return reply.code(404).send({ error: 'user not found' });
     try {
-      const items = await generateShadowing(levelTarget(user).prompt, req.body?.theme);
+      const items = await generateShadowing(levelTarget(user), req.body?.theme);
       if (!items.length) return reply.code(502).send({ error: 'empty' });
       return { items };
     } catch (e) {
@@ -62,7 +62,7 @@ export default async function speakingRoutes(app) {
 
     try {
       const recurring = topCategories(user.id, 3).map((c) => c.category);
-      const { reply: text } = await tutorReply(history, { level: levelTarget(user).prompt, focus, recurring });
+      const { reply: text } = await tutorReply(history, { level: levelTarget(user), focus, recurring });
       return { reply: text };
     } catch (e) {
       return aiFail(req, reply, e);
@@ -85,7 +85,7 @@ export default async function speakingRoutes(app) {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return reply.code(404).send({ error: 'user not found' });
     try {
-      return await roleplayScenario(levelTarget(user).prompt, req.body?.theme);
+      return await roleplayScenario(levelTarget(user), req.body?.theme);
     } catch (e) {
       return aiFail(req, reply, e);
     }
@@ -99,7 +99,7 @@ export default async function speakingRoutes(app) {
     if (!history.length) return reply.code(400).send({ error: 'messages required' });
     try {
       return await roleplayTurn(history, {
-        level: levelTarget(user).prompt,
+        level: levelTarget(user),
         scenario: req.body?.scenario ?? {},
       });
     } catch (e) {
@@ -117,7 +117,7 @@ export default async function speakingRoutes(app) {
     let result;
     try {
       result = await roleplayEvaluate(history, {
-        level: levelTarget(user).prompt,
+        level: levelTarget(user),
         scenario: req.body?.scenario ?? {},
       });
     } catch (e) {

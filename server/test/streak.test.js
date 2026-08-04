@@ -9,7 +9,7 @@ function makeUser({ streak = 0, longest = 0, lastActive = null, freezes = 0 } = 
     .prepare(
       'INSERT INTO users (name, level, start_date, streak, longest_streak, last_active, freezes) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
-    .run('T', 'Intermediário', today(), streak, longest, lastActive, freezes);
+    .run('T', 'B1', today(), streak, longest, lastActive, freezes);
   return info.lastInsertRowid;
 }
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);

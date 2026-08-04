@@ -38,7 +38,7 @@ export default async function decksRoutes(app) {
 
     let items;
     try {
-      items = await generatePack(theme.trim(), levelTarget(user).prompt, Math.min(20, count));
+      items = await generatePack(theme.trim(), levelTarget(user), Math.min(20, count));
     } catch (e) {
       return aiFail(req, reply, e);
     }

@@ -14,7 +14,7 @@ export default async function readingRoutes(app) {
     if (!user) return reply.code(404).send({ error: 'user not found' });
     let r;
     try {
-      r = await generateReading(levelTarget(user).prompt, req.body?.theme);
+      r = await generateReading(levelTarget(user), req.body?.theme);
     } catch (e) {
       return aiFail(req, reply, e);
     }

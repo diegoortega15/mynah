@@ -28,7 +28,7 @@ if (existing > 0) {
 
 const info = db
   .prepare('INSERT INTO users (name, avatar, level, start_date) VALUES (?, ?, ?, ?)')
-  .run('Demo', '🦉', 'Intermediário', today());
+  .run('Demo', '🦉', 'B1', today());
 const uid = info.lastInsertRowid;
 createStarterDeck(uid);
 db.prepare('INSERT INTO dialogues (user_id, theme, title, lines_json) VALUES (?, ?, ?, ?)').run(
