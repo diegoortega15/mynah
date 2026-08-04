@@ -2,19 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import DayBanner from './DayBanner.jsx';
 import HelpTip from './HelpTip.jsx';
+import { fmtWhen } from './format.js';
 import { useToday, useRefreshDay } from './queries.js';
 import { looksPortuguese } from './langCheck.js';
 import type { User, WritingFeedback, Writing as WritingEntry } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const fmtWhen = (s: string) => {
-  const d = new Date(s.replace(' ', 'T') + 'Z');
-  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString(
-    'pt-BR',
-    { hour: '2-digit', minute: '2-digit' }
-  )}`;
-};
 
 // Prompt pool: varied GENRES on purpose — an email, an opinion, a complaint
 // and a story force different structures and tenses. The 🎲 picks from here

@@ -71,7 +71,8 @@ export const TOPICS: Topic[] = [
       { b: 'Mostrar PT:', t: 'exibe a tradução de cada linha, caso você trave em alguma.' },
       { b: '+ card:', t: 'salva aquela fala no seu Vocabulário. Ela vai pro baralho “Frases do dia” já com um contexto (a fala vizinha da conversa) e entra na próxima revisão.' },
       { b: 'Diálogos anteriores:', t: 'ficam listados no fim — toque para reabrir e reouvir quando quiser.' },
-      { b: 'Conclusão do bloco:', t: 'o bloco Ouvir marca ✅ quando você ouve 1 diálogo (clicando em “Ouvir tudo”).' },
+      { b: '✅ Testar se entendi (novo):', t: 'abaixo do diálogo há 3 perguntas de compreensão (opcionais, recolhidas). Servem de espelho contra a “escuta passiva” — ouvir sem processar. Sem nota, sem travar nada: você responde, vê a resposta certa e a fala do diálogo que prova.' },
+      { b: 'Conclusão do bloco:', t: 'o bloco Ouvir marca ✅ quando você ouve 1 diálogo até o fim (ou ~1 min de vídeo do YouTube).' },
     ],
   },
   {
@@ -151,7 +152,9 @@ export const TOPICS: Topic[] = [
     title: 'Perfil — dados, progresso e IA',
     intro: 'Abra o Perfil pelo seu nome/avatar no menu lateral (ou na barra inferior, no celular).',
     items: [
-      { b: 'Editar dados:', t: 'mude avatar, nome, nível e a data de início do plano (há um botão “Recomeçar hoje”).' },
+      { b: 'Editar dados:', t: 'mude avatar, nome e a data de início do plano (há um botão “Recomeçar hoje”).' },
+      { b: 'Nível de inglês (CEFR):', t: 'A1 (iniciante) até C2 (proficiente) — o padrão internacional. É o piso de dificuldade de TODO conteúdo gerado: cards, diálogos, textos, tutor e roleplay. Se o material estiver difícil demais, baixe um nível: o próximo conteúdo já sai mais simples. Na dúvida, escolha o mais baixo.' },
+      { b: 'Alvo atual:', t: 'abaixo dos níveis o app mostra para qual nível a IA está gerando agora. Ele sobe sozinho a partir do que você escolheu — pelas fases do plano e pelo seu desempenho (erros de escrita, notas de shadowing, acertos nos cards) — mas nunca cai mais de um degrau abaixo da sua escolha.' },
       { b: '🎯 Metas diárias (novo):', t: 'ajuste quantos cards/práticas/textos fecham cada bloco. Numa semana corrida, reduza — constância vale mais que volume.' },
       { b: '🎨 Tema (novo):', t: 'claro, escuro ou automático (segue o sistema).' },
       { b: '🧊 Freeze de streak (novo):', t: 'cada semana completa ganha 1 freeze (máx 2), que protege o streak num dia perdido — viagem ou imprevisto não zera 40 dias de esforço.' },

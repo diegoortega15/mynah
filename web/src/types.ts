@@ -71,11 +71,18 @@ export interface DialogueLine {
   en: string;
   pt: string;
 }
+export interface DialogueQuestion {
+  q: string;
+  options: string[];
+  answer: number; // index of the correct option
+  why: string;
+}
 export interface Dialogue {
   id: number;
   theme?: string;
   title: string;
   lines: DialogueLine[];
+  questions?: DialogueQuestion[]; // empty on dialogues created before this feature
   created_at?: string;
 }
 

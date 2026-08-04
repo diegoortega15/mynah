@@ -20,7 +20,7 @@ const TARGET_FIELDS = [
   { key: 'write' as const, label: '✍️ Textos', min: 1, max: 5 },
 ];
 
-const LEVELS = ['Básico', 'Intermediário', 'Avançado'];
+import { LEVELS } from './levels.js';
 const AVATARS = ['🧑', '👩', '👨', '🧕', '👧', '🦸', '🐨', '🦊', '🐼', '🦉', '🐯', '🐧'];
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -31,6 +31,7 @@ interface ProfileStats {
   writings: number;
   dialogues: number;
   speaking: number;
+  levelTarget?: string; // CEFR the AI is currently generating for
 }
 
 export default function Settings({
@@ -108,14 +109,30 @@ export default function Settings({
         <label htmlFor="set-name">Nome</label>
         <input id="set-name" value={name} onChange={(e) => setName(e.target.value)} />
 
-        <span className="field-label" id="set-level">Nível</span>
-        <div className="chips" role="group" aria-labelledby="set-level">
+        <span className="field-label" id="set-level">Nível de inglês (CEFR)</span>
+        <div className="level-grid" role="group" aria-labelledby="set-level">
           {LEVELS.map((l) => (
-            <button key={l} className={`chip ${level === l ? 'sel' : ''}`} onClick={() => setLevel(l)}>
-              {l}
+            <button
+              key={l.code}
+              className={`level-opt ${level === l.code ? 'sel' : ''}`}
+              onClick={() => setLevel(l.code)}
+            >
+              <span className="lv-code">{l.code}</span>
+              <span className="lv-name">{l.name}</span>
+              <span className="lv-hint muted small">{l.hint}</span>
             </button>
           ))}
         </div>
+        <p className="muted small">
+          Material muito difícil? <strong>Baixe um nível</strong> — o conteúdo gerado passa a usar
+          frases e vocabulário mais simples na hora.
+          {stats?.levelTarget && (
+            <>
+              {' '}Alvo atual do conteúdo: <strong>{stats.levelTarget}</strong> (sobe sozinho
+              conforme você evolui, a partir do nível escolhido).
+            </>
+          )}
+        </p>
 
         <label htmlFor="set-start">Início do plano (Dia 1)</label>
         <div className="row">

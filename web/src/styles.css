@@ -595,6 +595,34 @@ input[type="date"] { width: auto; }
 .targets-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .target-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
 .target-field input { width: 100%; }
+/* CEFR level picker (Onboarding + Perfil) */
+.level-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 6px; }
+.level-opt {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; color: var(--text);
+}
+.level-opt:hover { border-color: var(--accent); }
+.level-opt.sel { border-color: var(--accent); background: var(--accent-tint); }
+.lv-code { font-weight: 700; color: var(--accent2); }
+.lv-name { font-weight: 600; font-size: 0.9rem; }
+.lv-hint { line-height: 1.35; }
+/* Optional comprehension quiz under a dialogue */
+.quiz {
+  margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;
+}
+.quiz > summary { cursor: pointer; font-weight: 600; }
+.quiz-q { margin: 14px 0; }
+.quiz-title { margin: 0 0 6px; }
+.quiz-opts { display: flex; flex-direction: column; gap: 6px; }
+.quiz-opt {
+  text-align: left; background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+}
+.quiz-opt:not(:disabled):hover { border-color: var(--accent); }
+.quiz-opt:disabled { cursor: default; opacity: 1; }
+.quiz-opt.ok { border-color: var(--good); background: var(--good-tint); }
+.quiz-opt.bad { border-color: var(--again); background: var(--warn-tint); }
 /* 4·3·2 fluency drill */
 .ftt-live { text-align: center; padding: 10px 0; }
 .rec-pill {

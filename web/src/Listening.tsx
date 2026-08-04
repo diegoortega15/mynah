@@ -3,8 +3,16 @@ import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import DayBanner from './DayBanner.jsx';
 import HelpTip from './HelpTip.jsx';
+import { fmtAgo } from './format.js';
 import { useToday, useRefreshDay } from './queries.js';
-import type { User, Dialogue, DialogueLine, TranscriptChunk, SavedYoutubeVideo } from './types';
+import type {
+  User,
+  Dialogue,
+  DialogueLine,
+  DialogueQuestion,
+  TranscriptChunk,
+  SavedYoutubeVideo,
+} from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -48,6 +56,65 @@ const fmtTime = (s: number) => {
 // How many lines ahead of the current one to translate in advance (so the PT is
 // already ready by the time playback reaches each line).
 const LOOKAHEAD = 2;
+
+// Optional comprehension check shown AFTER the dialogue, collapsed by default.
+// Listening stays the focus: nothing is graded, nothing is required — it just
+// answers "did I really understand, or did the audio wash over me?".
+function DialogueQuiz({ questions }: { questions: DialogueQuestion[] }) {
+  const [picked, setPicked] = useState<Record<number, number>>({});
+
+  const answered = Object.keys(picked).length;
+  const right = questions.filter((q, i) => picked[i] === q.answer).length;
+
+  return (
+    <details className="quiz">
+      <summary>
+        ✅ Testar se entendi <span className="muted small">(opcional, {questions.length} perguntas)</span>
+      </summary>
+      <p className="muted small">
+        Sem nota e sem pressa — é só um espelho pra saber se o sentido chegou. Se errar, ouça de novo
+        a fala citada.
+      </p>
+      {questions.map((q, qi) => {
+        const chosen = picked[qi];
+        const done = chosen !== undefined;
+        return (
+          <div key={qi} className="quiz-q">
+            <p className="quiz-title" lang="en">
+              {qi + 1}. {q.q}
+            </p>
+            <div className="quiz-opts">
+              {q.options.map((o, oi) => {
+                const isRight = oi === q.answer;
+                const cls = !done ? '' : isRight ? 'ok' : chosen === oi ? 'bad' : '';
+                return (
+                  <button
+                    key={oi}
+                    className={`quiz-opt ${cls}`}
+                    disabled={done}
+                    lang="en"
+                    onClick={() => setPicked((p) => ({ ...p, [qi]: oi }))}
+                  >
+                    {done && isRight ? '✓ ' : done && chosen === oi ? '✗ ' : ''}
+                    {o}
+                  </button>
+                );
+              })}
+            </div>
+            {done && q.why && <p className="muted small">💡 {q.why}</p>}
+          </div>
+        );
+      })}
+      {answered === questions.length && (
+        <p className="comment">
+          {right === questions.length
+            ? '🎉 Entendeu tudo! Pode partir para o próximo áudio.'
+            : `Você acertou ${right}/${questions.length}. Vale ouvir de novo prestando atenção nas falas citadas — reouvir entendendo vale mais que ouvir mais uma vez no automático.`}
+        </p>
+      )}
+    </details>
+  );
+}
 
 const THEMES = ['Daily standup', 'Negotiating a deadline', 'Job interview', 'Client kickoff', 'Giving feedback'];
 
@@ -274,6 +341,10 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
               </li>
             ))}
           </ul>
+
+          {dialogue.questions && dialogue.questions.length > 0 && (
+            <DialogueQuiz key={dialogue.id} questions={dialogue.questions} />
+          )}
         </section>
       )}
 
@@ -304,7 +375,10 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                     </>
                   ) : (
                     <>
-                      <span className="muted small">{d.lines.length} falas</span>
+                      <span className="muted small">
+                        {d.created_at ? `${fmtAgo(d.created_at)} · ` : ''}
+                        {d.lines.length} falas
+                      </span>
                       <button
                         className="ghost mini del"
                         title="Excluir diálogo"
@@ -640,6 +714,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                 <button className="linklike" disabled={opening !== null} onClick={() => openSaved(v)}>
                   {opening === v.id ? '⏳ ' : ''}{v.title || v.videoId}
                 </button>
+                <span className="muted small">{fmtAgo(v.created_at)}</span>
                 {confirmVid === v.id ? (
                   <span className="row" style={{ gap: 8 }}>
                     <button className="ghost mini" onClick={() => setConfirmVid(null)}>✕</button>
