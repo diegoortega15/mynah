@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { useSpeech, similarity } from '../../useSpeech.js';
 import type { User, ShadowItem } from '../../types';
+
+// Auto-stop: end the capture after this much silence following some speech.
+// Long sentences have natural mid-clause pauses — 2s tolerates them; the old
+// one-shot recognizer cut the mic on the FIRST pause, truncating long phrases.
+const SILENCE_MS = 2000;
+const MAX_CAPTURE_MS = 30000;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -13,13 +19,28 @@ const FALLBACK = [
 ];
 
 export default function Shadowing({ user, onPractice }: { user: User; onPractice?: () => void }) {
-  const { speak, listen, sttSupported } = useSpeech();
+  const { speak, startDictation, stopDictation, sttSupported } = useSpeech();
   const [targets, setTargets] = useState<ShadowItem[]>([]);
   const [i, setI] = useState(0);
   const [listening, setListening] = useState(false);
+  const [liveText, setLiveText] = useState('');
   const [result, setResult] = useState<{ transcript: string; score: number } | null>(null);
   const [err, setErr] = useState('');
   const [genBusy, setGenBusy] = useState(false);
+  const watchRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastChangeRef = useRef(0);
+  const gotSpeechRef = useRef(false);
+  const finishingRef = useRef(false);
+
+  // Leaving the screen mid-capture: close the mic and the watcher.
+  useEffect(
+    () => () => {
+      if (watchRef.current) clearInterval(watchRef.current);
+      stopDictation();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   async function generateNew() {
     setGenBusy(true);
@@ -61,23 +82,63 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
     speak(targets[ni].en);
   }
 
-  async function record() {
-    if (!sttSupported || !target) return;
+  // Capture with the CONTINUOUS recognizer (survives mid-sentence pauses) and
+  // auto-stop after SILENCE_MS without new speech — the mic stays open for the
+  // whole phrase, however long it is. "✔ Corrigir" forces an early finish.
+  function record() {
+    if (!sttSupported || !target || listening) return;
     setErr('');
     setResult(null);
-    setListening(true);
+    setLiveText('');
+    gotSpeechRef.current = false;
+    finishingRef.current = false;
+    lastChangeRef.current = Date.now();
     try {
-      const transcript = await listen();
-      const score = similarity(target.en, transcript);
-      setResult({ transcript, score });
-      api.logSpeaking(user.id, { mode: 'shadow', target: target.en, transcript, score }).catch(() => {});
-      onPractice?.();
+      startDictation({
+        onInterim: (t) => {
+          setLiveText(t);
+          if (t.trim()) {
+            gotSpeechRef.current = true;
+            lastChangeRef.current = Date.now();
+          }
+        },
+        onError: (m) => {
+          setErr(m);
+          void finishCapture(true);
+        },
+      });
     } catch (e) {
-      const m = errMsg(e);
-      setErr(m === 'no-speech' ? 'Não ouvi nada — tente de novo.' : m);
-    } finally {
-      setListening(false);
+      setErr(errMsg(e));
+      return;
     }
+    setListening(true);
+    const startedAt = Date.now();
+    watchRef.current = setInterval(() => {
+      const silent = Date.now() - lastChangeRef.current;
+      const total = Date.now() - startedAt;
+      if ((gotSpeechRef.current && silent >= SILENCE_MS) || total >= MAX_CAPTURE_MS) {
+        void finishCapture(false);
+      }
+    }, 250);
+  }
+
+  async function finishCapture(aborted: boolean) {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    if (watchRef.current) clearInterval(watchRef.current);
+    setListening(false);
+    const transcript = (await stopDictation()).trim();
+    setLiveText('');
+    if (aborted) return;
+    if (!transcript) {
+      setErr('Não ouvi nada — tente de novo.');
+      return;
+    }
+    if (!target) return;
+    const score = similarity(target.en, transcript);
+    setResult({ transcript, score });
+    api.logSpeaking(user.id, { mode: 'shadow', target: target.en, transcript, score }).catch(() => {});
+    onPractice?.();
   }
 
   if (!target) return <p className="muted">Carregando frases…</p>;
@@ -93,11 +154,22 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
       <p className="target" lang="en">{target.en}</p>
       {target.pt && <p className="target-pt muted">{target.pt}</p>}
       <div className="row center-row">
-        <button className="ghost" aria-label="Ouvir a frase" onClick={() => speak(target.en)}>🔊 Ouvir</button>
-        <button className={`primary ${listening ? 'rec' : ''}`} onClick={record} disabled={listening}>
-          {listening ? '🎤 Ouvindo…' : '🎤 Falar'}
+        <button className="ghost" aria-label="Ouvir a frase" disabled={listening} onClick={() => speak(target.en)}>
+          🔊 Ouvir
         </button>
+        {listening ? (
+          <button className="primary rec" onClick={() => void finishCapture(false)}>
+            ✔ Corrigir agora
+          </button>
+        ) : (
+          <button className="primary" onClick={record}>🎤 Falar</button>
+        )}
       </div>
+      {listening && (
+        <p className="live-tx small" lang="en">
+          <span className="rec-dot" /> {liveText || 'Ouvindo… fale a frase inteira — paro sozinho quando você terminar.'}
+        </p>
+      )}
       {err && <p className="error small">{err}</p>}
       {result && (
         <div className="score-box">
@@ -108,9 +180,9 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
         </div>
       )}
       <div className="row between nav">
-        <button className="ghost" disabled={i === 0} onClick={() => go(-1)}>← Anterior</button>
+        <button className="ghost" disabled={i === 0 || listening} onClick={() => go(-1)}>← Anterior</button>
         <span className="muted small">{i + 1}/{targets.length}</span>
-        <button className="ghost" disabled={i >= targets.length - 1} onClick={() => go(1)}>Próxima →</button>
+        <button className="ghost" disabled={i >= targets.length - 1 || listening} onClick={() => go(1)}>Próxima →</button>
       </div>
     </section>
   );
