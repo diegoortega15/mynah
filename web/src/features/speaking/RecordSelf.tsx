@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useRecorder } from '../../hooks/useRecorder.js';
 import FeedbackView from './FeedbackView.jsx';
+import { fmtWhen as when } from '../../format.js';
 import type { User, Recording } from '../../types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -17,10 +18,6 @@ const REC_PROMPTS = [
 
 const mmss = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-const when = (s: string) => {
-  const d = new Date(s.replace(' ', 'T') + 'Z');
-  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-};
 const scoreCls = (n: number) => (n >= 80 ? 'good' : n >= 50 ? 'mid' : 'low');
 
 export default function RecordSelf({ user, onPractice }: { user: User; onPractice?: () => void }) {

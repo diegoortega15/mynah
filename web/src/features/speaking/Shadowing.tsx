@@ -19,7 +19,7 @@ const FALLBACK = [
 ];
 
 export default function Shadowing({ user, onPractice }: { user: User; onPractice?: () => void }) {
-  const { speak, startDictation, stopDictation, sttSupported } = useSpeech();
+  const { playOne, stop, isPlaying, startDictation, stopDictation, sttSupported } = useSpeech();
   const [targets, setTargets] = useState<ShadowItem[]>([]);
   const [i, setI] = useState(0);
   const [listening, setListening] = useState(false);
@@ -37,6 +37,7 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
     () => () => {
       if (watchRef.current) clearInterval(watchRef.current);
       stopDictation();
+      stop();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
@@ -45,6 +46,7 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
   async function generateNew() {
     setGenBusy(true);
     setErr('');
+    stop();
     try {
       const { items } = await api.shadowingGenerate(user.id);
       if (items?.length) {
@@ -71,15 +73,15 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
 
   const target = targets[i];
 
-  // Navigate to another phrase and auto-play it. On initial open nothing plays —
-  // the user starts the first one with the "🔊 Ouvir" button.
+  // Navigate to another phrase. Audio NEVER plays on its own — it only fires
+  // when the user presses "🔊 Ouvir".
   function go(delta: number) {
     const ni = i + delta;
     if (ni < 0 || ni >= targets.length) return;
+    stop();
     setI(ni);
     setResult(null);
     setErr('');
-    speak(targets[ni].en);
   }
 
   // Capture with the CONTINUOUS recognizer (survives mid-sentence pauses) and
@@ -87,6 +89,7 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
   // whole phrase, however long it is. "✔ Corrigir" forces an early finish.
   function record() {
     if (!sttSupported || !target || listening) return;
+    stop(); // never let the TTS voice bleed into the microphone
     setErr('');
     setResult(null);
     setLiveText('');
@@ -154,9 +157,18 @@ export default function Shadowing({ user, onPractice }: { user: User; onPractice
       <p className="target" lang="en">{target.en}</p>
       {target.pt && <p className="target-pt muted">{target.pt}</p>}
       <div className="row center-row">
-        <button className="ghost" aria-label="Ouvir a frase" disabled={listening} onClick={() => speak(target.en)}>
-          🔊 Ouvir
-        </button>
+        {isPlaying ? (
+          <button className="ghost" aria-label="Parar o áudio" onClick={stop}>⏹ Parar</button>
+        ) : (
+          <button
+            className="ghost"
+            aria-label="Ouvir a frase"
+            disabled={listening}
+            onClick={() => playOne(target.en)}
+          >
+            🔊 Ouvir
+          </button>
+        )}
         {listening ? (
           <button className="primary rec" onClick={() => void finishCapture(false)}>
             ✔ Corrigir agora
