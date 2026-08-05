@@ -63,6 +63,20 @@ UX quick wins (<1h cada):
 - [x] **Impressão digital da transcrição** + botão "atualizar transcrição": legenda editada/regenerada faria o clique pular para o momento errado. Chavear a tradução por texto significa que uma legenda alterada só custa IA nas linhas que mudaram
 - [x] **Nível CEFR estimado do vídeo** (uma chamada, guardada na linha e reaproveitada entre perfis) + aviso não bloqueante quando foge do nível do aluno
 
+### Tradutor do navegador como rede de segurança
+
+Avaliada a Translator API do Chrome (Chromium 138+, no dispositivo, sem custo) como substituta da IA. **Rejeitada como principal, aceita como fallback.** Comparação lado a lado em 7 falas idiomáticas de uma transcrição real do TED:
+
+- 3 de 7 com erro que atrapalha a compreensão: `paper` (trabalho acadêmico) virou "papel" numa linha e "jornal" na seguinte; o *would* habitual virou condicional; um trecho que começa no meio da frase virou subjuntivo
+- 1 de 7 onde ele **ganhou** do Claude ("dove in slow motion" → "mergulharam", que o Claude perdeu)
+- Causas estruturais, não azar: ele traduz cada string isolada (sem contexto para desambiguar) e nossos trechos cortam no meio da frase
+- Agravante: os erros vêm em português impecável — erro fluente é mais difícil de detectar que erro desajeitado, ainda mais para quem está em A2
+
+- [x] Usado só quando a IA não responde; gravado com `source='local'` e reescrito pela IA na próxima tradução daquela linha
+- [x] Nunca sobrescreve uma tradução da IA; marcado com ⚠️ na linha e aviso no topo
+- [x] Toda chamada com prazo (create 20s, linha 5s): observei a API travar sem erro num navegador embutido, e um fallback que congela a tela é pior que fallback nenhum
+- [x] `translateList` desiste depois de 2 falhas seguidas em vez de gastar um timeout por linha
+
 ## FASE F — Saber em que nível o aluno está (ago/2026)
 
 Antes disso o nível era pura autodeclaração numa lista de 6 opções — a causa raiz do "marquei Intermediário e está difícil demais".

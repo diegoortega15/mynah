@@ -13,7 +13,7 @@ import { ownerOf, requireOwner } from '../lib/ownership.js';
 import { idParams, body } from '../lib/schemas.js';
 import { levelTarget, levelGap } from '../lib/level.js';
 import { resolveChannel } from '../lib/ytChannel.js';
-import { getCached, translateList, translateOne, BATCH } from '../lib/translations.js';
+import { getRow, putLocal, translateList, translateOne, BATCH } from '../lib/translations.js';
 
 function extractVideoId(url = '') {
   const m = String(url).match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([A-Za-z0-9_-]{11})/);
@@ -52,8 +52,10 @@ function groupSegments(segs, maxLen = 170) {
 const hashChunks = (chunks) =>
   createHash('sha256').update(chunks.map((c) => `${c.offset}|${c.text}`).join('\n')).digest('hex').slice(0, 32);
 
-// Translations already in the cache, aligned with chunks (null where missing).
-const cachedTx = (chunks) => chunks.map((c) => getCached(c.text));
+// Translations already in the cache, aligned with chunks (null where missing),
+// plus where each came from so the UI can flag the local stopgaps.
+const cachedTx = (chunks) => chunks.map((c) => getRow(c.text)?.pt ?? null);
+const cachedTxSrc = (chunks) => chunks.map((c) => getRow(c.text)?.source ?? null);
 
 // The stored CEFR verdict plus how it compares to this learner's level.
 function levelInfo(row, userId) {
@@ -183,6 +185,7 @@ export default async function listeningRoutes(app) {
     return {
       id: row.id, videoId: vid, title, chunks,
       tx: cachedTx(chunks),
+      txSource: cachedTxSrc(chunks),
       fetchedAt: row.fetched_at,
       level: levelInfo(row, req.params.id),
     };
@@ -216,6 +219,7 @@ export default async function listeningRoutes(app) {
     return {
       videoId: r.video_id, title: r.title, chunks,
       tx: cachedTx(chunks),
+      txSource: cachedTxSrc(chunks),
       fetchedAt: r.fetched_at,
       level: levelInfo(r, req.params.id),
     };
@@ -245,6 +249,30 @@ export default async function listeningRoutes(app) {
       return aiFail(req, reply, e);
     }
   });
+
+  // Accept translations the browser produced on-device (Chrome's Translator
+  // API) when the AI was unreachable. Stored as 'local' so the next AI run
+  // rewrites them — measured side by side, the local translator reads fluently
+  // but loses context ("paper" became "papel", then "jornal") and mangles the
+  // fragments our transcript is chopped into.
+  app.post('/api/translations/local', {
+    schema: {
+      body: body(['items'], {
+        items: {
+          type: 'array',
+          maxItems: 200,
+          items: {
+            type: 'object',
+            required: ['en', 'pt'],
+            properties: {
+              en: { type: 'string', minLength: 1, maxLength: 1000 },
+              pt: { type: 'string', minLength: 1, maxLength: 1000 },
+            },
+          },
+        },
+      }),
+    },
+  }, (req) => ({ saved: putLocal(req.body?.items ?? []) }));
 
   // Re-fetch the caption track and see whether the video's transcript changed.
   // Captions do get edited, and auto-captions are re-generated as YouTube's
@@ -281,7 +309,7 @@ export default async function listeningRoutes(app) {
     ).run(JSON.stringify(chunks), hash, req.params.rowId);
 
     const fresh = db.prepare('SELECT fetched_at FROM youtube_videos WHERE id = ?').get(req.params.rowId);
-    return { changed, chunks, tx: cachedTx(chunks), fetchedAt: fresh.fetched_at };
+    return { changed, chunks, tx: cachedTx(chunks), txSource: cachedTxSrc(chunks), fetchedAt: fresh.fetched_at };
   });
 
   // Judge the video's CEFR level (one AI call, then cached on the row).

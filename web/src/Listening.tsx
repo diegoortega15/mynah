@@ -6,6 +6,7 @@ import HelpTip from './HelpTip.jsx';
 import { fmtAgo } from './format.js';
 import ComprehensionQuiz from './ComprehensionQuiz.jsx';
 import FavoriteChannels, { useChannels } from './FavoriteChannels.jsx';
+import { localTranslateSupported, translateLocally } from './localTranslate.js';
 import { useToday, useRefreshDay } from './queries.js';
 import type {
   User,
@@ -15,6 +16,7 @@ import type {
   SavedYoutubeVideo,
   YoutubeVideoData,
   VideoLevel,
+  TxSource,
 } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -388,6 +390,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   // Translations aligned with chunks (null = not translated yet). Seeded from the
   // server cache, so a video you already translated opens instantly translated.
   const [tx, setTx] = useState<(string | null)[]>([]);
+  const [txSource, setTxSource] = useState<(TxSource | null)[]>([]);
   const [txLoading, setTxLoading] = useState<Record<number, boolean>>({});
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
   const [autoTx, setAutoTx] = useState(false); // show the translation under the active line
@@ -398,6 +401,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [level, setLevel] = useState<VideoLevel | null>(null);
   const chan = useChannels(user.id);
   const [chanMsg, setChanMsg] = useState('');
+  const [usedLocal, setUsedLocal] = useState(false); // the on-device fallback kicked in
 
   const playerElRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -438,8 +442,40 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   function adopt(res: YoutubeVideoData) {
     setChunks(res.chunks);
     setTx(res.tx ?? res.chunks.map(() => null));
+    setTxSource(res.txSource ?? res.chunks.map(() => null));
     setFetchedAt(res.fetchedAt);
     setLevel(res.level);
+  }
+
+  /**
+   * Fill gaps the AI could not translate using the browser's on-device
+   * translator, and hand the result back to the server cache so it survives a
+   * reload. Marked 'local': the next AI run rewrites it.
+   */
+  async function fillLocally(from: number, pt: (string | null)[], all: TranscriptChunk[]) {
+    const gaps = pt.map((v, k) => (v ? -1 : from + k)).filter((i) => i >= 0);
+    if (!gaps.length || !localTranslateSupported()) return;
+
+    const local = await translateLocally(gaps.map((i) => all[i].text));
+    const done = gaps
+      .map((i, k) => ({ i, pt: local[k] }))
+      .filter((x): x is { i: number; pt: string } => !!x.pt);
+    if (!done.length) return;
+
+    setTx((prev) => {
+      const next = [...prev];
+      done.forEach(({ i, pt: v }) => (next[i] = v));
+      return next;
+    });
+    setTxSource((prev) => {
+      const next = [...prev];
+      done.forEach(({ i }) => (next[i] = 'local'));
+      return next;
+    });
+    setUsedLocal(true);
+    api.saveLocalTranslations(done.map(({ i, pt: v }) => ({ en: all[i].text, pt: v }))).catch(() => {
+      /* o cache é otimização: a tradução já está na tela */
+    });
   }
 
   // Judge the video's level in the background — never delays getting to the video.
@@ -610,7 +646,12 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     setTxLoading((l) => ({ ...l, [i]: true }));
     try {
       const { pt } = await api.translateVideoRange(rowId, user.id, i, i + 1);
-      if (pt[0]) setTx((t) => t.map((v, k) => (k === i ? pt[0] : v)));
+      if (pt[0]) {
+        setTx((t) => t.map((v, k) => (k === i ? pt[0] : v)));
+        setTxSource((s) => s.map((v, k) => (k === i ? 'ai' : v)));
+      } else if (chunks) {
+        await fillLocally(i, pt, chunks);
+      }
     } catch {
       /* tradução é opcional */
     } finally {
@@ -661,6 +702,15 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
           });
           return next;
         });
+        setTxSource((prev) => {
+          const next = [...prev];
+          res.pt.forEach((p, k) => {
+            if (p) next[res.from + k] = 'ai';
+          });
+          return next;
+        });
+        // Whatever the AI could not do, the browser tries on-device.
+        await fillLocally(res.from, res.pt, chunks);
       } catch {
         /* um lote que falha não derruba o resto */
       }
@@ -758,6 +808,14 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                 </label>
               </div>
 
+              {(usedLocal || txSource.includes('local')) && (
+                <p className="tx-local-note">
+                  ⚠️ Parte da tradução veio do <strong>tradutor do próprio navegador</strong>, porque
+                  a IA não respondeu. Ele escreve bem, mas erra o que depende de contexto — marque
+                  🌐 de novo quando a IA voltar e essas linhas são refeitas.
+                </p>
+              )}
+
               {bulk && (
                 <div className="tx-progress">
                   <div className="bar">
@@ -794,7 +852,18 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                           {c.text}
                         </button>
                         {(manual[i] || (autoTx && i === activeIdx)) && (
-                          <p className="tx-line">{tx[i] ?? 'traduzindo…'}</p>
+                          <p className={`tx-line ${txSource[i] === 'local' ? 'local' : ''}`}>
+                            {tx[i] ?? 'traduzindo…'}
+                            {txSource[i] === 'local' && (
+                              <span
+                                className="tx-flag"
+                                title="Traduzido pelo navegador (a IA estava fora) — pode errar o contexto"
+                              >
+                                {' '}
+                                ⚠️
+                              </span>
+                            )}
+                          </p>
                         )}
                       </div>
                       <div className="lineact">

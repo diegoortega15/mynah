@@ -203,6 +203,8 @@ export interface VideoLevel {
   gap: LevelGap | null;
 }
 
+export type TxSource = 'ai' | 'local';
+
 export interface YoutubeVideoData {
   id?: number;
   videoId: string;
@@ -210,6 +212,8 @@ export interface YoutubeVideoData {
   chunks: TranscriptChunk[];
   /** Cached translations aligned with chunks; null where not translated yet. */
   tx: (string | null)[];
+  /** Where each translation came from: 'ai', or 'local' for a browser stopgap. */
+  txSource: (TxSource | null)[];
   fetchedAt: string | null;
   level: VideoLevel | null;
 }

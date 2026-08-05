@@ -41,6 +41,7 @@ addColumnIfMissing('readings', 'questions_json', 'TEXT');
 // become evidence about the learner instead of an unanchored number.
 addColumnIfMissing('dialogues', 'level_cefr', 'TEXT');
 addColumnIfMissing('readings', 'level_cefr', 'TEXT');
+addColumnIfMissing('translations', 'source', "TEXT NOT NULL DEFAULT 'ai'");
 addColumnIfMissing('youtube_videos', 'chunks_hash', 'TEXT');
 addColumnIfMissing('youtube_videos', 'fetched_at', 'TEXT');
 addColumnIfMissing('youtube_videos', 'level_cefr', 'TEXT');

@@ -138,6 +138,9 @@ export const api = {
       `/api/youtube-videos/${rowId}/translate?uid=${uid}`,
       { method: 'POST', body: { from, to } }
     ),
+  /** Hand the server translations the browser produced on-device. */
+  saveLocalTranslations: (items: { en: string; pt: string }[]) =>
+    req<{ saved: number }>('/api/translations/local', { method: 'POST', body: { items } }),
   refreshTranscript: (uid: number, rowId: number) =>
     req<{ changed: boolean; chunks: TranscriptChunk[]; tx: (string | null)[]; fetchedAt: string }>(
       `/api/users/${uid}/youtube-videos/${rowId}/refresh`,

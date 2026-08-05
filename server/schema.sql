@@ -120,10 +120,17 @@ CREATE TABLE IF NOT EXISTS youtube_videos (
 -- Captions get edited and re-generated; keying by text means an edited transcript
 -- only costs AI on the lines that actually changed. Shared by every profile and
 -- every screen (YouTube, Tutor) — a translation is a pure function of the text.
+-- source: 'ai' or 'local'. 'local' means the browser's on-device translator was
+-- used because the AI was unreachable. Measured against Claude on a real
+-- transcript it renders fluent Portuguese but misses context ("paper" became
+-- "papel" and then "jornal" in a talk about academic papers) and breaks on
+-- mid-sentence fragments — so a 'local' entry is a stopgap that gets rewritten
+-- by the AI on the next translation of that line.
 CREATE TABLE IF NOT EXISTS translations (
   hash       TEXT PRIMARY KEY,                -- sha256 of the normalised English
   en         TEXT NOT NULL,
   pt         TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'ai',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

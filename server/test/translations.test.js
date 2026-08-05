@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db.js';
-import { keyOf, getCached, putCached } from '../lib/translations.js';
+import { keyOf, getCached, getRow, putCached, putLocal } from '../lib/translations.js';
 import { levelGap } from '../lib/level.js';
 
 describe('cache de traduções (chaveado pelo texto)', () => {
@@ -33,6 +33,34 @@ describe('cache de traduções (chaveado pelo texto)', () => {
     putCached('  ', 'algo');
     putCached('algo', '   ');
     expect(db.prepare('SELECT COUNT(*) c FROM translations').get().c).toBe(0);
+  });
+});
+
+describe('fallback local (tradutor do navegador)', () => {
+  beforeEach(() => {
+    db.prepare('DELETE FROM translations').run();
+  });
+
+  it('grava marcado como local, não como IA', () => {
+    putLocal([{ en: 'Nice to meet you', pt: 'Prazer em conhecê-lo' }]);
+    expect(getRow('Nice to meet you')).toMatchObject({ source: 'local' });
+  });
+
+  it('NUNCA sobrescreve uma tradução da IA com uma local', () => {
+    putCached('The paper would come along', 'O trabalho chegava', 'ai');
+    const saved = putLocal([{ en: 'The paper would come along', pt: 'O papel viria' }]);
+    expect(saved).toBe(0);
+    expect(getCached('The paper would come along')).toBe('O trabalho chegava');
+  });
+
+  it('a IA sobrescreve uma tradução local (o remendo é temporário)', () => {
+    putLocal([{ en: 'It turns out', pt: 'Acontece' }]);
+    putCached('It turns out', 'Acontece que', 'ai');
+    expect(getRow('It turns out')).toMatchObject({ pt: 'Acontece que', source: 'ai' });
+  });
+
+  it('ignora itens vazios sem quebrar', () => {
+    expect(putLocal([{ en: '', pt: 'x' }, { en: 'y', pt: '  ' }, null])).toBe(0);
   });
 });
 
