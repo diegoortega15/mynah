@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { useSpeech } from './useSpeech.js';
 import HelpTip from './HelpTip.jsx';
 import ComprehensionQuiz from './ComprehensionQuiz.jsx';
+import { fmtAgo } from './format.js';
 import type { User, Reading as ReadingEntry, ComprehensionQuestion } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -280,6 +281,7 @@ export default function Reading({ user }: { user: User }) {
                 >
                   {r.title}
                 </button>
+                <span className="muted small">{fmtAgo(r.created_at)}</span>
                 {confirmDel === r.id ? (
                   <span className="row" style={{ gap: 8 }}>
                     <button className="ghost mini" onClick={() => setConfirmDel(null)}>✕</button>

@@ -7,7 +7,7 @@
 <p align="center">
   <img alt="CI" src="https://github.com/diegoortega15/mynah/actions/workflows/ci.yml/badge.svg" />
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" />
-  <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A518-3c873a.svg" />
+  <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A520-3c873a.svg" />
   <img alt="React" src="https://img.shields.io/badge/React-18-61dafb.svg" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6.svg" />
   <img alt="Fastify" src="https://img.shields.io/badge/Fastify-5-000000.svg" />
@@ -49,7 +49,7 @@ Multiusuário (ideal pra casal/família), sem nuvem, seus dados ficam num SQLite
 
 - 🏠 **Dashboard do plano de 90 dias** — dia atual, fase, streak 🔥 (com **freezes 🧊** ganhos a cada semana completa), foco sugerido, marcos (Dia 7, 30, 45, 60, 90) e o painel **"seus erros recorrentes"**.
 - 🗂️ **Vocabulário com FSRS** — o agendador moderno do Anki (~25% menos revisões que o SM-2 clássico para a mesma retenção). Cards são **frases inteiras em contexto**, com áudio — nunca palavras soltas. Revisão com **4 modos intercalados**: traduzir, ✂️ completar a lacuna, 🇧🇷→🇬🇧 produzir a frase e 👂 só de ouvido.
-- 🎧 **Listening** — diálogos gerados no seu nível narrados com **duas vozes** (pausar/retomar/parar), e **YouTube com transcrição sincronizada**: legenda acompanha o vídeo, **clicar em qualquer frase pula o vídeo para aquele momento**, **tradução do vídeo inteiro guardada no banco** (reabrir é instantâneo e não gasta IA), **nível CEFR estimado do vídeo** com aviso quando foge do seu, **tradutor do navegador como rede de segurança** se a IA cair (marcado com ⚠️ e reescrito depois), "+ card" direto da fala e **canais favoritos** (cole o canal — ou um vídeo dele — e busque só dentro dos seus).
+- 🎧 **Listening** — diálogos gerados no seu nível narrados com **duas vozes** (pausar/retomar/parar), e **YouTube com transcrição sincronizada**: legenda acompanha o vídeo, **clicar em qualquer frase pula o vídeo para aquele momento**, **tradução do vídeo inteiro guardada no banco** (reabrir é instantâneo e não gasta IA), **nível CEFR estimado do vídeo** com aviso quando foge do seu, **tradutor do navegador como rede de segurança** se a IA cair (marcado com ⚠️ e reescrito depois), **🔄 atualizar transcrição** (legenda editada faria o clique pular para o momento errado), "+ card" direto da fala e **canais favoritos** (cole o canal — ou um vídeo dele — e busque só dentro dos seus).
 - 📖 **Leitura extensiva** — textos gerados no seu nível com **lookup de 1 clique** (o significado da palavra *naquela frase*) e mineração de frases para o baralho, estilo LingQ.
 - ✅ **Checagem de compreensão** — diálogos e textos vêm com 3 perguntas opcionais (geradas na mesma chamada, sem custo extra) para combater a “escuta/leitura passiva”.
 - 🗣️ **Fala** — **Shadowing** com nota 0–100%, **Tutor de conversa** por voz ou texto, **🎭 Roleplay com objetivo** (cenário com meta concreta + avaliação por rubrica no final) e **4·3·2** (a mesma história 3× com menos tempo — fluência na marra).
@@ -95,19 +95,23 @@ flowchart TD
     subgraph Browser["🌐 Navegador (Chrome/Edge)"]
         UI["React 18 + TypeScript<br/>Vite · React Router · TanStack Query"]
         Speech["SpeechProvider<br/>Web Speech API — TTS + STT"]
+        Tr["Translator API<br/>tradução no dispositivo<br/>(só se a IA cair)"]
         UI <--> Speech
+        UI <--> Tr
     end
 
     subgraph Server["🖥️ Backend local · Fastify 5 (porta 3001)"]
-        Routes["Rotas REST<br/>users · decks · review · writing<br/>listening · speaking · config"]
+        Routes["Rotas REST<br/>users · decks · review · writing · listening<br/>speaking · reading · placement · recordings<br/>history · progress · config"]
         SRS["lib/srs.js<br/>Repetição espaçada (FSRS)"]
+        Level["lib/level.js · placement.js<br/>Nível CEFR (i+1) e nivelamento"]
         AI["services/ai.js<br/>Abstração de provedor"]
         Routes --> SRS
+        Routes --> Level
         Routes --> AI
     end
 
     subgraph DataLayer["💾 data/ · gitignored"]
-        DB[("SQLite<br/>better-sqlite3")]
+        DB[("SQLite<br/>better-sqlite3<br/>+ cache de traduções")]
         Files["Áudios + config.json"]
     end
 
@@ -153,6 +157,8 @@ autoassinado, o navegador mostra um aviso de segurança na primeira vez — cliq
 <summary>Opções avançadas (rodar separado, HTTP, banco)</summary>
 
 - **Terminais separados:** `cd server && npm start` e `cd web && npm run dev`.
+- **`npm start` vs `npm run dev`:** o `dev` reinicia a API a cada arquivo salvo (`node --watch`) — bom para desenvolver, chato para estudar. O `start` não observa arquivos.
+- **`npm run backfill:questions`:** gera as 3 perguntas de compreensão para diálogos e textos criados antes dessa funcionalidade. Idempotente — pula o que já tem.
 - **Sem HTTPS** (o microfone só funciona em localhost): `NO_SSL=1 npm run dev` dentro de `web/`.
 - **Caminho do banco:** variável `DB_PATH` (padrão `data/fluencylab.db`; os testes usam `:memory:`).
 - **Porta da API:** variável `PORT` no server — lembre de ajustar o proxy em `web/vite.config.js`.
@@ -191,22 +197,27 @@ mynah/
 │  ├─ index.js             # bootstrap (listen)
 │  ├─ db.js  schema.sql    # SQLite + migrações idempotentes
 │  ├─ config.js            # config da IA (data/config.json)
-│  ├─ lib/                 # srs.js (FSRS), streak.js (freeze), level.js (i+1), errorBank.js…
+│  ├─ lib/                 # srs.js (FSRS), streak.js (freeze), level.js (i+1),
+│  │                       # placement.js + placementBank.js (teste de nivelamento),
+│  │                       # translations.js (cache), ytChannel.js, ownership.js, errorBank.js…
 │  ├─ services/
 │  │  ├─ ai.js             # camada de IA (despacha para o provedor)
 │  │  └─ providers/        # claudeCli, codexCli, geminiCli, ollama, openai, gemini
-│  ├─ routes/              # users, decks, review, writing, listening, speaking, reading, config, history, progress
-│  └─ test/                # Vitest (FSRS, streak, extractJson, rotas via app.inject em :memory:)
+│  ├─ routes/              # users, decks, review, writing, listening, speaking, reading,
+│  │                       # placement, recordings, config, history, progress
+│  └─ test/                # Vitest (FSRS, streak, nivelamento, traduções + fallback,
+│                          # canais, extractJson, rotas via app.inject em :memory:)
 ├─ web/                    # frontend React + TypeScript + Vite
 │  └─ src/
 │     ├─ api.ts queries.ts types.ts     # API tipada, hooks de dados, tipos de domínio
 │     ├─ useSpeech.ts speech-types.ts   # TTS/STT (Web Speech API)
+│     ├─ localTranslate.ts              # Translator API do navegador (fallback da IA)
 │     ├─ hooks/useRecorder.ts           # câmera + MediaRecorder
 │     ├─ features/speaking/             # Shadowing, Tutor, Roleplay, FourThreeTwo, RecordSelf
-│     └─ *.tsx                          # telas (Dashboard, Vocab, Listening, Writing, Settings…)
+│     └─ *.tsx                          # telas (Dashboard, Vocab, Listening, Placement, Settings…)
 ├─ assets/                 # logo/ícone (Mynah)
 ├─ data/                   # SQLite + áudios + config.json  (gitignored)
-├─ docs/                   # IMPROVEMENTS.md, screenshots/
+├─ docs/                   # IMPROVEMENTS.md, ROADMAP-V2.md, screenshots/
 ├─ PLANO.md                # o plano de desenvolvimento
 └─ README.md
 ```
@@ -220,9 +231,11 @@ mynah/
 ## 🗺️ Roadmap
 
 Já implementado: FSRS + 4 modos de revisão, leitura extensiva com lookup, roleplay
-com rubrica, técnica 4·3·2, nível dinâmico (i+1), banco de erros recorrentes, streak
-com freeze, metas configuráveis, tema claro/escuro, gravar-se em vídeo com feedback
-da IA, YouTube com transcrição sincronizada, histórico (heatmap), ajuda contextual.
+com rubrica, técnica 4·3·2, nível dinâmico (i+1), teste de nivelamento adaptativo,
+banco de erros recorrentes, streak com freeze, metas configuráveis, tema claro/escuro,
+gravar-se em vídeo com feedback da IA, checagem de compreensão, YouTube completo
+(transcrição sincronizada e clicável, tradução em cache, canais favoritos, nível CEFR
+do vídeo), histórico (heatmap), ajuda contextual.
 O plano completo das rodadas de melhoria está em `docs/IMPROVEMENTS.md` e `docs/ROADMAP-V2.md`.
 
 Backlog:
