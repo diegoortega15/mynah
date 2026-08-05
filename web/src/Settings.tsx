@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
-import type { User } from './types';
+import type { User, PlacementRow } from './types';
 import { getThemePref, setThemePref, type ThemePref } from './theme.js';
 import HelpTip from './HelpTip.jsx';
 import AiSettings from './AiSettings.jsx';
 import VoiceSettings from './VoiceSettings.jsx';
+import Placement from './Placement.jsx';
+import { fmtWhen } from './format.js';
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'auto', label: '🌗 Auto (sistema)' },
@@ -57,10 +59,37 @@ export default function Settings({
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [lastPlacement, setLastPlacement] = useState<PlacementRow | null>(null);
+
+  const loadPlacements = useCallback(() => {
+    api
+      .listPlacements(user.id)
+      .then((rows) => setLastPlacement(rows[0] ?? null))
+      .catch(() => {});
+  }, [user.id]);
 
   useEffect(() => {
     api.profileStats(user.id).then(setStats).catch(() => {});
-  }, [user.id]);
+    loadPlacements();
+  }, [user.id, loadPlacements]);
+
+  // The test writes the level straight to the profile, so pull it back in.
+  async function afterPlacement() {
+    setTesting(false);
+    loadPlacements();
+    try {
+      const fresh = await api.getUser(user.id);
+      setLevel(fresh.level);
+      onUpdated(fresh);
+    } catch {
+      /* o nível continua o que estava na tela */
+    }
+  }
+
+  if (testing) {
+    return <Placement userId={user.id} onApply={afterPlacement} onClose={afterPlacement} />;
+  }
 
   const dirty =
     name !== user.name || level !== user.level || avatar !== user.avatar || startDate !== user.start_date;
@@ -133,6 +162,17 @@ export default function Settings({
             </>
           )}
         </p>
+        <div className="row gen">
+          <button className="ghost" onClick={() => setTesting(true)}>
+            🎯 Descobrir meu nível (teste de 8 min)
+          </button>
+          {lastPlacement && (
+            <span className="muted small">
+              Último teste: <strong>{lastPlacement.result_cefr}</strong> em{' '}
+              {fmtWhen(lastPlacement.created_at)}
+            </span>
+          )}
+        </div>
 
         <label htmlFor="set-start">Início do plano (Dia 1)</label>
         <div className="row">

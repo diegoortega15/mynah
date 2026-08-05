@@ -27,6 +27,19 @@ export async function chat(messages, cfgOverride) {
   }
 }
 
+// A batch translation writes ~20 sentences in one answer, which legitimately
+// takes longer than the single-question default. Only the CLI providers have a
+// client-side timeout to raise.
+function slowConfig(timeoutMs) {
+  const c = getConfig();
+  return {
+    ...c,
+    claude: { ...c.claude, timeoutMs },
+    codex: { ...c.codex, timeoutMs },
+    geminiCli: { ...c.geminiCli, timeoutMs },
+  };
+}
+
 // Pull JSON out of a response that may be fenced or wrapped in prose.
 export function extractJson(text) {
   let t = String(text).trim();
@@ -414,6 +427,76 @@ Return ONLY this JSON (comments in Brazilian Portuguese, phrases in English):
 }
 
 // Translate a single phrase to Brazilian Portuguese (for YouTube saves).
+/**
+ * Translate many sentences in ONE call. Returns an array aligned with `texts`,
+ * or null when the answer doesn't line up — the caller then falls back to
+ * one-by-one, so a bad batch costs time but never silently misaligns
+ * translations with the wrong lines.
+ */
+export async function translateBatch(texts) {
+  const numbered = texts.map((t, i) => `${i + 1}. ${String(t).replace(/\s+/g, ' ').trim()}`).join('\n');
+  const raw = await chat([
+    {
+      role: 'system',
+      content:
+        'You translate English to natural Brazilian Portuguese.\n' +
+        'The user sends a numbered list. Answer with the SAME numbering, one translation per line, ' +
+        'in the same order, exactly as many lines as you received.\n' +
+        'Format each line as: <number>. <translation>\n' +
+        'Never merge or split lines, never add notes, never wrap the answer in code fences. ' +
+        'Keep each translation on a single line.',
+    },
+    { role: 'user', content: numbered },
+  ], slowConfig(240000));
+
+  // Numbered lines rather than JSON on purpose: transcripts are full of quoted
+  // speech ("He said, \"we're late\""), and models routinely emit those quotes
+  // unescaped inside a JSON string, which makes the whole batch unparseable.
+  const byIndex = new Map();
+  for (const line of String(raw).split(/\r?\n/)) {
+    const m = line.match(/^\s*(\d+)\s*[.)-]\s*(.+?)\s*$/);
+    if (m) {
+      const n = Number(m[1]);
+      if (n >= 1 && n <= texts.length && !byIndex.has(n)) byIndex.set(n, m[2]);
+    }
+  }
+  if (byIndex.size !== texts.length) return null;
+  return texts.map((_, i) => byIndex.get(i + 1));
+}
+
+/**
+ * Judge how hard a video is to FOLLOW BY EAR, on the CEFR scale.
+ * Takes a sample spread across the transcript — the opening of a video is often
+ * an easy hook and would flatter the whole thing.
+ */
+export async function classifyTranscriptLevel(chunks) {
+  const texts = chunks.map((c) => (typeof c === 'string' ? c : c.text));
+  const spots = [0, Math.floor(texts.length / 3), Math.floor((texts.length * 2) / 3)];
+  const sample = spots
+    .flatMap((s) => texts.slice(s, s + 6))
+    .join(' ')
+    .slice(0, 2500);
+
+  const out = await askJson([
+    {
+      role: 'system',
+      content:
+        'You rate how hard English AUDIO is to understand by ear, on the CEFR scale.\n' +
+        'Weigh: vocabulary frequency, idioms and slang, sentence complexity, how densely packed the ' +
+        'speech is, and cultural references a foreigner would miss.\n' +
+        'Rate the LISTENER level needed to follow it — for a lesson video, rate the audience it is ' +
+        'aimed at, not the grammar jargon the teacher uses.\n' +
+        'Answer ONLY as JSON: {"cefr":"A1|A2|B1|B2|C1|C2","why":"<one short sentence in Brazilian Portuguese>"}',
+    },
+    { role: 'user', content: sample },
+  ]);
+  const cefr = String(out?.cefr || '').toUpperCase();
+  if (!CEFR_SET.has(cefr)) return null;
+  return { cefr, why: String(out?.why || '').trim().slice(0, 240) };
+}
+
+const CEFR_SET = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
+
 export async function translatePhrase(en) {
   const out = await chat([
     {

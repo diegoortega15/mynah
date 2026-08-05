@@ -37,6 +37,14 @@ addColumnIfMissing('users', 'freezes', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'targets_json', 'TEXT');
 addColumnIfMissing('dialogues', 'questions_json', 'TEXT');
 addColumnIfMissing('readings', 'questions_json', 'TEXT');
+// The CEFR each piece of generated content was written at — lets a quiz score
+// become evidence about the learner instead of an unanchored number.
+addColumnIfMissing('dialogues', 'level_cefr', 'TEXT');
+addColumnIfMissing('readings', 'level_cefr', 'TEXT');
+addColumnIfMissing('youtube_videos', 'chunks_hash', 'TEXT');
+addColumnIfMissing('youtube_videos', 'fetched_at', 'TEXT');
+addColumnIfMissing('youtube_videos', 'level_cefr', 'TEXT');
+addColumnIfMissing('youtube_videos', 'level_why', 'TEXT');
 
 // Levels migrated from the old PT-BR labels to the CEFR scale (A1…C2).
 db.exec(`

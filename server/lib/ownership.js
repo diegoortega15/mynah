@@ -19,6 +19,7 @@ export const ownerOf = {
   recording: (id) => db.prepare('SELECT user_id FROM recordings WHERE id = ?').get(id)?.user_id ?? null,
   youtubeVideo: (id) =>
     db.prepare('SELECT user_id FROM youtube_videos WHERE id = ?').get(id)?.user_id ?? null,
+  channel: (id) => db.prepare('SELECT user_id FROM channels WHERE id = ?').get(id)?.user_id ?? null,
 };
 
 // Guard: replies 404 (not 403 — no need to reveal existence) unless the

@@ -1,21 +1,47 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { api } from './api.js';
 import type { ComprehensionQuestion } from './types';
 
 // Optional comprehension check shown AFTER a dialogue or a reading, collapsed
 // by default. Input stays the focus: nothing is graded, nothing is required —
 // it just answers "did I really understand, or did it wash over me?".
 // Wrong answers are also the honest signal that the text was above level.
+//
+// The score is also reported once, tagged with the LEVEL of the content, so it
+// can accumulate into evidence about the learner (see /api/users/:id/level-hint).
 export default function ComprehensionQuiz({
   questions,
   kind = 'áudio',
+  userId,
+  source,
+  sourceId,
+  cefr,
 }: {
   questions: ComprehensionQuestion[];
   kind?: string;
+  userId?: number;
+  source?: 'dialogue' | 'reading';
+  sourceId?: number;
+  cefr?: string | null;
 }) {
   const [picked, setPicked] = useState<Record<number, number>>({});
+  const reported = useRef(false);
 
   const answered = Object.keys(picked).length;
   const right = questions.filter((q, i) => picked[i] === q.answer).length;
+
+  // Report once, only when the whole quiz is done and the content's level is
+  // known — a score without a level says nothing about the learner.
+  useEffect(() => {
+    if (reported.current || answered !== questions.length || !questions.length) return;
+    if (!userId || !source || !cefr) return;
+    reported.current = true;
+    api
+      .recordComprehension(userId, { source, source_id: sourceId, cefr, correct: right, total: questions.length })
+      .catch(() => {
+        /* a evidência é um extra: falhar aqui não pode atrapalhar o estudo */
+      });
+  }, [answered, questions.length, right, userId, source, sourceId, cefr]);
 
   return (
     <details className="quiz">

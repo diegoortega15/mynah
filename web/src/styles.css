@@ -445,6 +445,112 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
 .line.b .spk { background: var(--accent2); color: var(--on-accent2); }
 .linebody { flex: 1; }
 .linebody .en { margin: 0; }
+
+/* Transcript lines are buttons: clicking the sentence seeks the video there. */
+.yt-seek {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.yt-seek:hover { text-decoration: underline; text-underline-offset: 3px; }
+.yt-seek:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Placement test */
+.placement-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.placement-head .mini { flex: 0 0 auto; }
+.placement-head .bar {
+  flex: 1; height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden;
+}
+.placement-head .bar > div { height: 100%; background: var(--accent); transition: width 0.3s ease; }
+.placement-verdict {
+  font-size: 1.6rem; font-weight: 700; margin: 0.25rem 0 1rem; color: var(--accent2);
+}
+.placement-breakdown { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.4rem; }
+.placement-breakdown li { font-size: 0.92rem; }
+.placement-q { font-size: 1.1rem; margin: 1rem 0 0.75rem; }
+.word-grid {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0;
+}
+.word-opt {
+  padding: 0.5rem 0.9rem; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--text); font-size: 1rem; cursor: pointer;
+}
+.word-opt.sel { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.opt-list { display: grid; gap: 0.5rem; }
+.opt {
+  text-align: left; padding: 0.75rem 1rem; border-radius: 10px;
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+  font-size: 1rem; cursor: pointer;
+}
+.opt:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-tint); }
+.onboard-placement { width: 100%; max-width: 640px; }
+
+/* Bulk translation progress */
+.tx-progress { margin: 0 0 0.75rem; }
+.tx-progress .bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+.tx-progress .bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.tx-progress p { margin: 0.35rem 0 0; }
+
+/* How the video's level compares to the learner's — informative, never a block. */
+.level-note {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-tint);
+  font-size: 0.9rem;
+}
+.level-note.easier { border-left-color: var(--good); background: var(--good-tint-weak); }
+
+.yt-foot { margin-top: 0.75rem; gap: 0.5rem; flex-wrap: wrap; }
+
+/* Favourite channels */
+.chan-search { margin-top: 0.75rem; }
+.chan-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.chan-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.35rem 0.2rem 0.75rem;
+  background: var(--surface2);
+}
+.chan-chip a {
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9rem;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chan-chip a:hover { text-decoration: underline; }
+.chan-chip .mini { padding: 0.1rem 0.4rem; }
+.yt-title-row { align-items: flex-start; gap: 0.5rem; }
 .lineact { display: flex; gap: 4px; flex: none; }
 
 /* Speaking */
@@ -755,6 +861,8 @@ button.hm-cell { cursor: pointer; }
   .mini { min-height: 40px; min-width: 40px; }
   /* Speaking header: title + 3 mode chips don't fit on one 375px line. */
   .speaking > .row.between { flex-wrap: wrap; gap: 8px; }
+  /* Channel chips: the link is the tap target, so give it finger height. */
+  .chan-chip a { padding: 0.5rem 0; max-width: 60vw; }
 }
 
 @media (max-width: 520px) {

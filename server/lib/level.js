@@ -43,6 +43,31 @@ export function normalizeLevel(level) {
   return LEGACY[v] ?? 'B1';
 }
 
+/**
+ * Compare a piece of content against the learner's level and phrase the gap.
+ * Returns null when it lands on their level — silence is the right message
+ * then. Never blocks anything: the learner decides what to watch.
+ */
+export function levelGap(contentCefr, userLevel) {
+  const c = String(contentCefr ?? '').toUpperCase();
+  if (BASE[c] === undefined) return null;
+  const mine = normalizeLevel(userLevel);
+  // In CEFR steps (A1→A2 is 1), not ladder rungs.
+  const delta = (BASE[c] - BASE[mine]) / 2;
+  if (delta === 0) return null;
+
+  const msg =
+    delta >= 2
+      ? `Este vídeo parece ${c} e você está em ${mine} — bem acima. Vale assistir mesmo assim: ligue a tradução sem culpa e mire na ideia geral, não em cada palavra.`
+      : delta === 1
+        ? `Este vídeo parece ${c}, um degrau acima do seu ${mine} — é a faixa onde mais se aprende. Se travar, a tradução está aí.`
+        : delta === -1
+          ? `Este vídeo parece ${c}, um pouco abaixo do seu ${mine} — bom para ganhar fluidez e ouvir sem esforço.`
+          : `Este vídeo parece ${c} e você está em ${mine} — deve soar fácil. Ótimo para relaxar, mas você avança mais com algo mais difícil.`;
+
+  return { cefr: c, mine, delta, harder: delta > 0, msg };
+}
+
 // Returns { cefr, prompt } — `prompt` is the string handed to the AI.
 export function levelTarget(user) {
   const base = BASE[normalizeLevel(user.level)];

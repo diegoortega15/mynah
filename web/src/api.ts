@@ -17,6 +17,14 @@ import type {
   TutorMessage,
   TranscriptChunk,
   SavedYoutubeVideo,
+  YoutubeVideoData,
+  VideoLevel,
+  Channel,
+  PlacementStep,
+  PlacementResult,
+  PlacementAnswer,
+  PlacementRow,
+  LevelHint,
   UserErrorsSummary,
   ComprehensionQuestion,
   RoleplayScenario,
@@ -119,18 +127,50 @@ export const api = {
   surpriseDialogue: (uid: number) =>
     req<Dialogue>(`/api/users/${uid}/listening/surprise`, { method: 'POST', body: {} }),
   youtube: (uid: number, body: { url: string }) =>
-    req<{ id: number; videoId: string; title: string | null; chunks: TranscriptChunk[] }>(
-      `/api/users/${uid}/youtube`,
-      { method: 'POST', body }
-    ),
+    req<YoutubeVideoData & { id: number }>(`/api/users/${uid}/youtube`, { method: 'POST', body }),
   listYoutubeVideos: (uid: number) =>
     req<SavedYoutubeVideo[]>(`/api/users/${uid}/youtube-videos`),
   getYoutubeVideo: (uid: number, rowId: number) =>
-    req<{ videoId: string; title: string | null; chunks: TranscriptChunk[] }>(
-      `/api/users/${uid}/youtube-videos/${rowId}`
+    req<YoutubeVideoData>(`/api/users/${uid}/youtube-videos/${rowId}`),
+  /** Translate one slice of a video's transcript (cache-first on the server). */
+  translateVideoRange: (rowId: number, uid: number, from: number, to: number) =>
+    req<{ from: number; pt: (string | null)[] }>(
+      `/api/youtube-videos/${rowId}/translate?uid=${uid}`,
+      { method: 'POST', body: { from, to } }
     ),
+  refreshTranscript: (uid: number, rowId: number) =>
+    req<{ changed: boolean; chunks: TranscriptChunk[]; tx: (string | null)[]; fetchedAt: string }>(
+      `/api/users/${uid}/youtube-videos/${rowId}/refresh`,
+      { method: 'POST', body: {} }
+    ),
+  videoLevel: (uid: number, rowId: number) =>
+    req<VideoLevel>(`/api/users/${uid}/youtube-videos/${rowId}/level`, { method: 'POST', body: {} }),
   deleteYoutubeVideo: (rowId: number, uid: number) =>
     req<Ok>(`/api/youtube-videos/${rowId}?uid=${uid}`, { method: 'DELETE' }),
+  // Placement test: the server keeps the item bank and the answer key.
+  placementStep: (answers: PlacementAnswer[]) =>
+    req<PlacementStep | ({ done: true } & Omit<PlacementResult, 'id' | 'current' | 'differs'>)>(
+      '/api/placement/step',
+      { method: 'POST', body: { answers } }
+    ),
+  savePlacement: (uid: number, answers: PlacementAnswer[]) =>
+    req<PlacementResult>(`/api/users/${uid}/placement`, { method: 'POST', body: { answers } }),
+  applyPlacement: (uid: number, pid: number) =>
+    req<{ ok: true; level: string }>(`/api/users/${uid}/placement/${pid}/apply`, {
+      method: 'POST',
+      body: {},
+    }),
+  listPlacements: (uid: number) => req<PlacementRow[]>(`/api/users/${uid}/placements`),
+  levelHint: (uid: number) => req<{ hint: LevelHint | null }>(`/api/users/${uid}/level-hint`),
+  recordComprehension: (
+    uid: number,
+    body: { source: 'dialogue' | 'reading'; source_id?: number; cefr: string; correct: number; total: number }
+  ) => req<Ok>(`/api/users/${uid}/comprehension`, { method: 'POST', body }),
+  listChannels: (uid: number) => req<Channel[]>(`/api/users/${uid}/channels`),
+  addChannel: (uid: number, body: { input: string; note?: string }) =>
+    req<Channel & { already?: boolean }>(`/api/users/${uid}/channels`, { method: 'POST', body }),
+  deleteChannel: (cid: number, uid: number) =>
+    req<Ok>(`/api/channels/${cid}?uid=${uid}`, { method: 'DELETE' }),
   listDialogues: (uid: number) => req<Dialogue[]>(`/api/users/${uid}/listening`),
   deleteDialogue: (id: number, uid: number) =>
     req<Ok>(`/api/dialogues/${id}?uid=${uid}`, { method: 'DELETE' }),
@@ -183,7 +223,7 @@ export const api = {
 
   // Reading (extensive reading tab)
   generateReading: (uid: number, theme?: string) =>
-    req<{ id: number; title: string; text: string; questions?: ComprehensionQuestion[] }>(`/api/users/${uid}/reading/generate`, {
+    req<{ id: number; title: string; text: string; cefr?: string | null; questions?: ComprehensionQuestion[] }>(`/api/users/${uid}/reading/generate`, {
       method: 'POST',
       body: { theme },
     }),

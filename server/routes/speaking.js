@@ -2,7 +2,6 @@ import { db } from '../db.js';
 import {
   tutorReply,
   generateShadowing,
-  translatePhrase,
   roleplayScenario,
   roleplayTurn,
   roleplayEvaluate,
@@ -12,6 +11,7 @@ import { idParams, body } from '../lib/schemas.js';
 import { topCategories } from '../lib/errorBank.js';
 import { levelTarget } from '../lib/level.js';
 import { aiFail } from '../lib/aiError.js';
+import { translateOne } from '../lib/translations.js';
 
 export default async function speakingRoutes(app) {
   // On-demand translation (used by the tutor's "traduzir" button).
@@ -21,7 +21,7 @@ export default async function speakingRoutes(app) {
     const { text } = req.body ?? {};
     if (!text || !text.trim()) return reply.code(400).send({ error: 'text required' });
     try {
-      return { pt: await translatePhrase(text.trim()) };
+      return { pt: await translateOne(text.trim()) };
     } catch (e) {
       return aiFail(req, reply, e);
     }

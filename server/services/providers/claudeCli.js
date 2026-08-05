@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { messagesToPrompt } from './util.js';
 
 // Uses the Claude Code CLI in headless mode — covered by the Max subscription.
-export function chat(messages, { model = 'claude-haiku-4-5', command = 'claude' } = {}) {
+export function chat(messages, { model = 'claude-haiku-4-5', command = 'claude', timeoutMs = 90000 } = {}) {
   const prompt = messagesToPrompt(messages);
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'json', '--model', model, '--strict-mcp-config'];
@@ -13,7 +13,7 @@ export function chat(messages, { model = 'claude-haiku-4-5', command = 'claude' 
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error('claude timeout'));
-    }, 90000);
+    }, timeoutMs);
 
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (err += d));

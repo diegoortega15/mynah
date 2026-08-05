@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS writings (
 );
 
 -- Sprint 3: generated listening dialogues
+-- level_cefr: the level the content was generated at (see comprehension_results)
 CREATE TABLE IF NOT EXISTS dialogues (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -107,9 +108,62 @@ CREATE TABLE IF NOT EXISTS youtube_videos (
   video_id    TEXT NOT NULL,
   title       TEXT,
   chunks_json TEXT NOT NULL,                  -- [{text, offset}]
+  chunks_hash TEXT,                           -- fingerprint: detects edited captions
+  fetched_at  TEXT,                           -- when the caption track was captured
+  level_cefr  TEXT,                           -- A1…C2, judged from the transcript
+  level_why   TEXT,                           -- one line (PT-BR) explaining the call
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(user_id, video_id)
 );
+
+-- Translation cache, keyed by the SENTENCE ITSELF (not by position in a video).
+-- Captions get edited and re-generated; keying by text means an edited transcript
+-- only costs AI on the lines that actually changed. Shared by every profile and
+-- every screen (YouTube, Tutor) — a translation is a pure function of the text.
+CREATE TABLE IF NOT EXISTS translations (
+  hash       TEXT PRIMARY KEY,                -- sha256 of the normalised English
+  en         TEXT NOT NULL,
+  pt         TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Placement test results. Kept as history (not overwritten) so redoing the test
+-- on day 45 can be compared with the one taken on day 1.
+CREATE TABLE IF NOT EXISTS placements (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  result_cefr TEXT NOT NULL,
+  blocks_json TEXT NOT NULL,                  -- per-block detail, shown to the learner
+  applied     INTEGER NOT NULL DEFAULT 0,     -- 1 when the learner accepted the suggestion
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_placements_user ON placements(user_id, created_at);
+
+-- Comprehension quiz results, tagged with the level of the CONTENT. Scoring 3/3
+-- on B2 material is evidence about the learner that a self-declared level is not.
+CREATE TABLE IF NOT EXISTS comprehension_results (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source     TEXT NOT NULL,                   -- 'dialogue' | 'reading'
+  source_id  INTEGER,
+  cefr       TEXT NOT NULL,                   -- level the content was written at
+  correct    INTEGER NOT NULL,
+  total      INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_comprehension_user ON comprehension_results(user_id, created_at);
+
+-- Favourite YouTube channels: where this learner likes to look for videos
+CREATE TABLE IF NOT EXISTS channels (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,                    -- display name (@handle or given title)
+  url        TEXT NOT NULL,                    -- canonical channel URL
+  note       TEXT,                             -- why it is useful ("legendas boas", "TI")
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_channels_user ON channels(user_id);
 
 -- Daily progress: which of the 4 blocks were done each day (per user)
 CREATE TABLE IF NOT EXISTS sessions (

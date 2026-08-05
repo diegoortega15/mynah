@@ -31,6 +31,7 @@ export default function Reading({ user }: { user: User }) {
     text: string;
     id?: number;
     questions?: ComprehensionQuestion[];
+    cefr?: string | null; // level it was written at, for the comprehension evidence
   } | null>(null);
   const [saved, setSaved] = useState<ReadingEntry[]>([]);
   const [theme, setTheme] = useState('');
@@ -74,7 +75,7 @@ export default function Reading({ user }: { user: User }) {
     stop();
     try {
       const r = await api.generateReading(user.id, th || undefined);
-      setCurrent({ title: r.title, text: r.text, id: r.id, questions: r.questions });
+      setCurrent({ title: r.title, text: r.text, id: r.id, questions: r.questions, cefr: r.cefr });
       setTheme('');
       loadSaved();
     } catch (e) {
@@ -206,7 +207,15 @@ export default function Reading({ user }: { user: User }) {
           {current.text.split(/\n{2,}/).map((p, i) => renderParagraph(p, i))}
 
           {current.questions && current.questions.length > 0 ? (
-            <ComprehensionQuiz key={current.title} questions={current.questions} kind="texto" />
+            <ComprehensionQuiz
+              key={current.title}
+              questions={current.questions}
+              kind="texto"
+              userId={user.id}
+              source="reading"
+              sourceId={current.id}
+              cefr={current.cefr}
+            />
           ) : (
             current.id !== undefined && (
               // Reading created before the feature: generate on demand.
@@ -266,7 +275,7 @@ export default function Reading({ user }: { user: User }) {
                   onClick={() => {
                     stop();
                     setLookup(null);
-                    setCurrent({ title: r.title, text: r.text_en, id: r.id, questions: r.questions });
+                    setCurrent({ title: r.title, text: r.text_en, id: r.id, questions: r.questions, cefr: r.cefr });
                   }}
                 >
                   {r.title}

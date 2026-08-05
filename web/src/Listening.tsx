@@ -5,6 +5,7 @@ import DayBanner from './DayBanner.jsx';
 import HelpTip from './HelpTip.jsx';
 import { fmtAgo } from './format.js';
 import ComprehensionQuiz from './ComprehensionQuiz.jsx';
+import FavoriteChannels, { useChannels } from './FavoriteChannels.jsx';
 import { useToday, useRefreshDay } from './queries.js';
 import type {
   User,
@@ -12,6 +13,8 @@ import type {
   DialogueLine,
   TranscriptChunk,
   SavedYoutubeVideo,
+  YoutubeVideoData,
+  VideoLevel,
 } from './types';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -53,9 +56,9 @@ const fmtTime = (s: number) => {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 };
 
-// How many lines ahead of the current one to translate in advance (so the PT is
-// already ready by the time playback reaches each line).
-const LOOKAHEAD = 2;
+// Lines per translation request. Must match BATCH on the server, where the size
+// was measured: ten lines per AI call is ~3.6x cheaper per line than one-by-one.
+const BATCH = 10;
 
 const THEMES = ['Daily standup', 'Negotiating a deadline', 'Job interview', 'Client kickoff', 'Giving feedback'];
 
@@ -285,7 +288,14 @@ function AiTab({ user, onMarked }: { user: User; onMarked: () => void }) {
           </ul>
 
           {dialogue.questions && dialogue.questions.length > 0 ? (
-            <ComprehensionQuiz key={dialogue.id} questions={dialogue.questions} />
+            <ComprehensionQuiz
+              key={dialogue.id}
+              questions={dialogue.questions}
+              userId={user.id}
+              source="dialogue"
+              sourceId={dialogue.id}
+              cefr={dialogue.cefr}
+            />
           ) : (
             // Dialogue created before the feature: generate on demand.
             <div className="row end" style={{ marginTop: 12 }}>
@@ -370,21 +380,31 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [confirmVid, setConfirmVid] = useState<number | null>(null); // saved video armed for deletion
   const [vidDelBusy, setVidDelBusy] = useState(false);
   const [opening, setOpening] = useState<number | null>(null); // saved video being reopened
+  const [rowId, setRowId] = useState<number | null>(null); // DB row of the open video
   const [chunks, setChunks] = useState<TranscriptChunk[] | null>(null);
   const [saved, setSaved] = useState<Record<number, boolean | 'saving'>>({});
   const [err, setErr] = useState('');
   const [activeIdx, setActiveIdx] = useState(-1);
-  const [tx, setTx] = useState<Record<number, string>>({}); // translations by chunk index
+  // Translations aligned with chunks (null = not translated yet). Seeded from the
+  // server cache, so a video you already translated opens instantly translated.
+  const [tx, setTx] = useState<(string | null)[]>([]);
   const [txLoading, setTxLoading] = useState<Record<number, boolean>>({});
-  const [autoTx, setAutoTx] = useState(false); // translate the active line as it plays
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  const [autoTx, setAutoTx] = useState(false); // show the translation under the active line
   const [manual, setManual] = useState<Record<number, boolean>>({}); // lines the user revealed by hand
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState('');
+  const [level, setLevel] = useState<VideoLevel | null>(null);
+  const chan = useChannels(user.id);
+  const [chanMsg, setChanMsg] = useState('');
 
   const playerElRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const chunksRef = useRef<TranscriptChunk[] | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const activeRef = useRef<HTMLLIElement | null>(null);
-  const txReq = useRef<Set<number>>(new Set()); // indices already requested (avoid refetch)
+  const bulkRun = useRef(0); // bumped to cancel an in-flight bulk translation
 
   useEffect(() => {
     chunksRef.current = chunks;
@@ -405,11 +425,34 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   function resetVideoState() {
     setActiveIdx(-1);
     setSaved({});
-    setTx({});
+    setTx([]);
     setTxLoading({});
     setManual({});
-    txReq.current = new Set();
+    setBulk(null);
+    setLevel(null);
+    setRefreshMsg('');
+    bulkRun.current++; // cancels any bulk translation still running
   }
+
+  // Adopt a video payload (fresh load, reopen or refreshed transcript).
+  function adopt(res: YoutubeVideoData) {
+    setChunks(res.chunks);
+    setTx(res.tx ?? res.chunks.map(() => null));
+    setFetchedAt(res.fetchedAt);
+    setLevel(res.level);
+  }
+
+  // Judge the video's level in the background — never delays getting to the video.
+  const askLevel = useCallback(
+    async (id: number) => {
+      try {
+        setLevel(await api.videoLevel(user.id, id));
+      } catch {
+        /* o aviso de nível é um extra: sem ele o vídeo funciona igual */
+      }
+    },
+    [user.id]
+  );
 
   async function load() {
     if (!url.trim()) return;
@@ -422,9 +465,11 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     try {
       const res = await api.youtube(user.id, { url: url.trim() });
       setVideoTitle(res.title);
-      setChunks(res.chunks);
+      setRowId(res.id);
+      adopt(res);
       setVideoId(res.videoId);
       loadSavedVideos();
+      if (!res.level) askLevel(res.id);
     } catch (e) {
       setErr(errMsg(e));
     } finally {
@@ -444,12 +489,43 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     try {
       const res = await api.getYoutubeVideo(user.id, v.id);
       setVideoTitle(res.title);
-      setChunks(res.chunks);
+      setRowId(v.id);
+      adopt(res);
       setVideoId(res.videoId);
+      if (!res.level) askLevel(v.id);
     } catch (e) {
       setErr(errMsg(e));
     } finally {
       setOpening(null);
+    }
+  }
+
+  // Re-fetch the caption track: YouTube captions do get edited and auto-captions
+  // are re-generated, which would make click-to-seek land on the wrong moment.
+  async function refreshTranscript() {
+    if (!rowId || refreshing) return;
+    setRefreshing(true);
+    setRefreshMsg('');
+    try {
+      const res = await api.refreshTranscript(user.id, rowId);
+      setChunks(res.chunks);
+      setTx(res.tx ?? res.chunks.map(() => null));
+      setFetchedAt(res.fetchedAt);
+      setManual({});
+      setActiveIdx(-1);
+      bulkRun.current++;
+      setBulk(null);
+      if (res.changed) {
+        setLevel(null);
+        askLevel(rowId);
+        setRefreshMsg('A legenda deste vídeo mudou — atualizei a transcrição e os tempos.');
+      } else {
+        setRefreshMsg('A legenda continua igual à que estava salva.');
+      }
+    } catch (e) {
+      setRefreshMsg(errMsg(e));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -527,13 +603,14 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
     p.playVideo();
   }
 
-  // Translate one chunk (once) and cache it.
-  async function fetchTx(i: number, text: string) {
-    if (tx[i] !== undefined || txLoading[i]) return;
+  // Translate one line on demand (the 🌐 button). Goes through the same server
+  // cache as the bulk pass, so a line translated here is never paid for twice.
+  async function fetchTx(i: number) {
+    if (!rowId || tx[i] || txLoading[i]) return;
     setTxLoading((l) => ({ ...l, [i]: true }));
     try {
-      const { pt } = await api.translate(text);
-      setTx((t) => ({ ...t, [i]: pt }));
+      const { pt } = await api.translateVideoRange(rowId, user.id, i, i + 1);
+      if (pt[0]) setTx((t) => t.map((v, k) => (k === i ? pt[0] : v)));
     } catch {
       /* tradução é opcional */
     } finally {
@@ -546,28 +623,61 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   }
 
   // Per-line 🌐: reveal/hide the translation by hand (keeps the cached text).
-  function toggleTx(i: number, text: string) {
+  function toggleTx(i: number) {
     const willShow = !manual[i];
     setManual((m) => ({ ...m, [i]: willShow }));
-    if (willShow && !txReq.current.has(i)) {
-      txReq.current.add(i);
-      fetchTx(i, text);
-    }
+    if (willShow) fetchTx(i);
   }
 
-  // With the toggle on, keep the current line and the next few translated ahead
-  // of time, so the PT is ready by the time playback reaches each line.
-  useEffect(() => {
-    if (!autoTx || !chunks) return;
-    const base = activeIdx < 0 ? 0 : activeIdx;
-    for (let i = base; i <= base + LOOKAHEAD && i < chunks.length; i++) {
-      if (!txReq.current.has(i)) {
-        txReq.current.add(i);
-        fetchTx(i, chunks[i].text);
+  /**
+   * Translate the whole video in batches, filling lines in as they land.
+   * One AI call per BATCH instead of one per line — measured on the Claude CLI,
+   * that is ~7x cheaper per line, because most of the cost is process start-up.
+   * Anything already cached on the server comes back instantly and costs nothing.
+   */
+  async function translateAll() {
+    if (!rowId || !chunks) return;
+    const run = ++bulkRun.current;
+    const total = chunks.length;
+    const already = tx.filter(Boolean).length;
+    if (already === total) return; // vídeo já traduzido: nem pisca a barra
+    setBulk({ done: already, total });
+
+    for (let from = 0; from < total; from += BATCH) {
+      if (bulkRun.current !== run) return; // toggle turned off / another video opened
+      const to = Math.min(total, from + BATCH);
+      // Skip a batch that is already fully translated (reopening a done video).
+      if (tx.slice(from, to).every(Boolean)) {
+        setBulk({ done: Math.min(to, total), total });
+        continue;
       }
+      try {
+        const res = await api.translateVideoRange(rowId, user.id, from, to);
+        if (bulkRun.current !== run) return;
+        setTx((prev) => {
+          const next = [...prev];
+          res.pt.forEach((p, k) => {
+            if (p) next[res.from + k] = p;
+          });
+          return next;
+        });
+      } catch {
+        /* um lote que falha não derruba o resto */
+      }
+      setBulk({ done: Math.min(to, total), total });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIdx, autoTx, chunks]);
+    if (bulkRun.current === run) setBulk(null);
+  }
+
+  // Turning the toggle on translates the video once; turning it off cancels.
+  function toggleAutoTx(on: boolean) {
+    setAutoTx(on);
+    if (on) translateAll();
+    else {
+      bulkRun.current++;
+      setBulk(null);
+    }
+  }
 
   async function save(text: string, idx: number) {
     setSaved((s) => ({ ...s, [idx]: 'saving' }));
@@ -603,9 +713,33 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
         {err && <p className="error">{err}</p>}
       </section>
 
+      <FavoriteChannels ctl={chan} />
+
       {videoId && (
         <section className="card yt-player-card">
-          {videoTitle && <h2 className="yt-title">{videoTitle}</h2>}
+          <div className="row between yt-title-row">
+            {videoTitle && <h2 className="yt-title">{videoTitle}</h2>}
+            <button
+              className="ghost mini"
+              disabled={chan.busy}
+              title="Salvar o canal deste vídeo nos meus canais"
+              onClick={async () => {
+                const m = await chan.add(`https://www.youtube.com/watch?v=${videoId}`);
+                if (m) setChanMsg(m);
+              }}
+            >
+              {chan.busy ? '…' : '⭐ salvar canal'}
+            </button>
+          </div>
+          {chanMsg && <p className="muted small">{chanMsg}</p>}
+
+          {level?.gap && (
+            <p className={`level-note ${level.gap.harder ? 'harder' : 'easier'}`}>
+              <strong>{level.gap.cefr}</strong> {level.gap.msg}
+              {level.why && <span className="muted small"> — {level.why}</span>}
+            </p>
+          )}
+
           <div className="yt-frame">
             <div key={videoId} ref={playerElRef} />
           </div>
@@ -618,11 +752,23 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                   <input
                     type="checkbox"
                     checked={autoTx}
-                    onChange={(e) => setAutoTx(e.target.checked)}
+                    onChange={(e) => toggleAutoTx(e.target.checked)}
                   />
-                  🌐 traduzir enquanto toca
+                  🌐 mostrar tradução
                 </label>
               </div>
+
+              {bulk && (
+                <div className="tx-progress">
+                  <div className="bar">
+                    <div style={{ width: `${Math.round((bulk.done / bulk.total) * 100)}%` }} />
+                  </div>
+                  <p className="muted small">
+                    Traduzindo {bulk.done}/{bulk.total} — a primeira vez leva alguns minutos, depois
+                    fica salvo e abre na hora. Pode assistir enquanto traduz.
+                  </p>
+                </div>
+              )}
               <ul className="dialogue yt-transcript" ref={listRef}>
                 {chunks.map((c, i) => {
                   const isActive = i === activeIdx;
@@ -640,7 +786,13 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                         {fmtTime(c.offset)}
                       </button>
                       <div className="linebody">
-                        <p className="en">{c.text}</p>
+                        <button
+                          className="en yt-seek"
+                          onClick={() => seek(c.offset)}
+                          title={`Pular para ${fmtTime(c.offset)}`}
+                        >
+                          {c.text}
+                        </button>
                         {(manual[i] || (autoTx && i === activeIdx)) && (
                           <p className="tx-line">{tx[i] ?? 'traduzindo…'}</p>
                         )}
@@ -649,9 +801,9 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                         <button
                           className="ghost mini"
                           title="Traduzir esta fala"
-                          onClick={() => toggleTx(i, c.text)}
+                          onClick={() => toggleTx(i)}
                         >
-                          {txLoading[i] && tx[i] === undefined ? '…' : manual[i] ? '🌐✓' : '🌐'}
+                          {txLoading[i] ? '…' : manual[i] ? '🌐✓' : '🌐'}
                         </button>
                         <button
                           className="ghost mini"
@@ -665,6 +817,21 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
                   );
                 })}
               </ul>
+
+              <div className="row between yt-foot">
+                <span className="muted small">
+                  {fetchedAt ? `Legenda capturada ${fmtAgo(fetchedAt)}.` : 'Legenda salva antes desta versão.'}
+                </span>
+                <button
+                  className="ghost mini"
+                  disabled={refreshing}
+                  title="Rebuscar a legenda no YouTube — legendas são editadas e regeradas, e uma legenda antiga faz o clique pular para o momento errado"
+                  onClick={refreshTranscript}
+                >
+                  {refreshing ? 'Buscando…' : '🔄 atualizar transcrição'}
+                </button>
+              </div>
+              {refreshMsg && <p className="muted small">{refreshMsg}</p>}
             </>
           )}
         </section>

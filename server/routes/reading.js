@@ -12,28 +12,29 @@ export default async function readingRoutes(app) {
   }, async (req, reply) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return reply.code(404).send({ error: 'user not found' });
+    const target = levelTarget(user);
     let r;
     try {
-      r = await generateReading(levelTarget(user), req.body?.theme);
+      r = await generateReading(target, req.body?.theme);
     } catch (e) {
       return aiFail(req, reply, e);
     }
     const info = db
       .prepare(
-        'INSERT INTO readings (user_id, theme, title, text_en, questions_json) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO readings (user_id, theme, title, text_en, questions_json, level_cefr) VALUES (?, ?, ?, ?, ?, ?)'
       )
       .run(
         user.id, String(req.body?.theme ?? ''), r.title, r.text,
-        JSON.stringify(r.questions ?? [])
+        JSON.stringify(r.questions ?? []), target.cefr
       );
-    return reply.code(201).send({ id: info.lastInsertRowid, ...r });
+    return reply.code(201).send({ id: info.lastInsertRowid, cefr: target.cefr, ...r });
   });
 
   // List saved readings (full text — they're small).
   app.get('/api/users/:id/readings', (req) =>
     db
       .prepare(
-        'SELECT id, theme, title, text_en, questions_json, created_at FROM readings WHERE user_id = ? ORDER BY id DESC LIMIT 30'
+        'SELECT id, theme, title, text_en, questions_json, level_cefr AS cefr, created_at FROM readings WHERE user_id = ? ORDER BY id DESC LIMIT 30'
       )
       .all(req.params.id)
       .map(({ questions_json, ...rest }) => {

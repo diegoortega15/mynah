@@ -54,6 +54,25 @@ UX quick wins (<1h cada):
 - [x] **Nível dinâmico (i+1)**: inferir CEFR-alvo pelo desempenho (accuracy dos cards, notas de escrita, uso do "Mostrar PT") e subir a dificuldade dos prompts ao longo dos 90 dias
 - [x] Transição forçada p/ conteúdo autêntico a partir do dia 31 (meta de listening no YouTube/podcast)
 
+## FASE E — YouTube como fonte de verdade (ago/2026)
+
+- [x] **Clicar na frase pula o vídeo** para aquele momento (antes só o timestamp fazia)
+- [x] **Canais favoritos** por perfil: aceita `@handle`, URL de canal ou de um vídeo (canal resolvido via oEmbed); busca dentro do canal escolhido
+- [x] **Cache de tradução global**, chaveado pelo *texto* da frase (não pela posição): 9,6s→2,6s por linha em lotes de 10, e reabrir um vídeo já traduzido custa ~0,3s e zero IA. Compartilhado entre perfis e telas (YouTube, Tutor)
+- [x] **Tradução do vídeo inteiro** ao marcar 🌐, com barra de progresso; lotes sequenciais (paralelizar não ganha nada — medido: 86s vs 79s)
+- [x] **Impressão digital da transcrição** + botão "atualizar transcrição": legenda editada/regenerada faria o clique pular para o momento errado. Chavear a tradução por texto significa que uma legenda alterada só custa IA nas linhas que mudaram
+- [x] **Nível CEFR estimado do vídeo** (uma chamada, guardada na linha e reaproveitada entre perfis) + aviso não bloqueante quando foge do nível do aluno
+
+## FASE F — Saber em que nível o aluno está (ago/2026)
+
+Antes disso o nível era pura autodeclaração numa lista de 6 opções — a causa raiz do "marquei Intermediário e está difícil demais".
+
+- [x] **Teste adaptativo (~8 min)**: vocabulário estilo LexTALE (palavras inventadas embaralhadas na lista punem o chute), 5 itens de escuta narrados pelo TTS local (zero custo de IA), 8 lacunas em contexto. Começa em B1 e anda ±1 a cada resposta
+- [x] **Banco fixo e curado, sem IA** — itens gerados por IA mediriam a opinião do modelo sobre o que é "B2"; itens fixos ainda podem estar mal calibrados, mas ancoram o vocabulário em faixas de frequência e permitem comparar o teste do dia 45 com o do dia 1
+- [x] **Sugere, não impõe**: o resultado mostra o veredito e o acerto por bloco; o nível do perfil só muda com o clique do aluno. Histórico guardado em `placements`
+- [x] **Evidência contínua**: cada quiz de compreensão é gravado com o CEFR do *conteúdo*; após 5+ amostras acima do nível com ≥80% de acerto (ou no próprio nível com ≤40%), o Início sugere ajustar
+- [x] Ponto de entrada no Onboarding (logo após criar o perfil) e no Perfil ("refazer")
+
 ## Backlog (P2)
 
 - Whisper local p/ shadowing (confidências por palavra) + drills de pronúncia PT-BR (th/t, -ed, h aspirado)

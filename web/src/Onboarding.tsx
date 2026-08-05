@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from './api.js';
 import { LEVELS } from './levels.js';
+import Placement from './Placement.jsx';
 import type { User } from './types';
 
 export default function Onboarding({
@@ -14,6 +15,7 @@ export default function Onboarding({
   const [level, setLevel] = useState('B1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [created, setCreated] = useState<User | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -21,12 +23,36 @@ export default function Onboarding({
     setBusy(true);
     setError('');
     try {
-      const u = await api.createUser({ name: name.trim(), level });
-      onCreated(u);
+      // The profile is created first; the test is offered right after, so the
+      // self-declared level is a starting point rather than a final answer.
+      setCreated(await api.createUser({ name: name.trim(), level }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
     }
+  }
+
+  // Finish onboarding, re-reading the profile in case the test changed the level.
+  async function finish(u: User) {
+    try {
+      onCreated(await api.getUser(u.id));
+    } catch {
+      onCreated(u);
+    }
+  }
+
+  if (created) {
+    return (
+      <div className="center">
+        <div className="onboard-placement">
+          <Placement
+            userId={created.id}
+            onApply={() => finish(created)}
+            onClose={() => finish(created)}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -61,7 +87,9 @@ export default function Onboarding({
         </div>
         <p className="muted small">
           Na dúvida, escolha o <strong>mais baixo</strong>: material fácil demais você avança rápido;
-          difícil demais desanima. Dá pra mudar quando quiser no Perfil.
+          difícil demais desanima. <strong>Não sabe?</strong> Escolha qualquer um — logo depois de
+          criar o perfil eu ofereço um teste de 8 minutos para descobrir, e dá pra mudar quando
+          quiser no Perfil.
         </p>
 
         {error && <p className="error">{error}</p>}

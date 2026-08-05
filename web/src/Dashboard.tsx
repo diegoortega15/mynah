@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from './api.js';
 import HelpTip from './HelpTip.jsx';
 import { useStats, useToday } from './queries.js';
-import type { User, BlockKey, UserErrorsSummary } from './types';
+import type { User, BlockKey, UserErrorsSummary, LevelHint } from './types';
 
 interface Block {
   key: BlockKey;
@@ -28,12 +28,20 @@ export default function Dashboard({ user }: { user: User }) {
   const [openHelp, setOpenHelp] = useState(() => localStorage.getItem('fluencylab.dashHelp') !== '0');
   const [aiDown, setAiDown] = useState(false);
   const [errBank, setErrBank] = useState<UserErrorsSummary | null>(null);
+  const [hint, setHint] = useState<LevelHint | null>(null);
+  const [hintOff, setHintOff] = useState(false);
 
   useEffect(() => {
     let alive = true;
     api
       .getErrors(user.id)
       .then((e) => alive && setErrBank(e))
+      .catch(() => {});
+    // What the day-to-day quizzes say about the level, which may disagree with
+    // what the profile claims. Suggestion only — nothing changes by itself.
+    api
+      .levelHint(user.id)
+      .then((r) => alive && setHint(r.hint))
       .catch(() => {});
     return () => {
       alive = false;
@@ -65,6 +73,17 @@ export default function Dashboard({ user }: { user: User }) {
 
   return (
     <div className="dash">
+      {hint && !hintOff && (
+        <div className={`level-note ${hint.direction === 'up' ? 'harder' : 'easier'} row between`}>
+          <span>
+            🎯 {hint.msg}{' '}
+            <Link to="/settings">Ajustar no Perfil →</Link>
+          </span>
+          <button className="ghost mini" title="Dispensar" onClick={() => setHintOff(true)}>
+            ✕
+          </button>
+        </div>
+      )}
       {aiDown && (
         <div className="ai-banner">
           ⚠️ <strong>A IA não está respondendo.</strong> Os exercícios gerados (packs, diálogos,
