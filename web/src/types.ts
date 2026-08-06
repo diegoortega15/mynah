@@ -194,6 +194,8 @@ export interface LevelGap {
   mine: string;
   delta: number;
   harder: boolean;
+  /** True when the content sits exactly on the learner's level. */
+  match: boolean;
   msg: string;
 }
 

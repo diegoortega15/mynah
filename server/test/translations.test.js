@@ -65,8 +65,13 @@ describe('fallback local (tradutor do navegador)', () => {
 });
 
 describe('levelGap (aviso de nível do vídeo)', () => {
-  it('cala a boca quando o vídeo está no nível do aluno', () => {
-    expect(levelGap('B1', 'B1')).toBeNull();
+  // Antes isso devolvia null "porque o certo é ficar calado". Errado: sem
+  // mensagem, o aluno não distingue "está no seu nível" de "não rodou" — foi
+  // exatamente a dúvida que apareceu no uso real.
+  it('avisa também quando o vídeo está no nível do aluno', () => {
+    const r = levelGap('B1', 'B1');
+    expect(r).toMatchObject({ cefr: 'B1', mine: 'B1', delta: 0, match: true });
+    expect(r.msg).toContain('o seu nível');
   });
 
   it('marca como mais difícil e mede a distância em degraus CEFR', () => {

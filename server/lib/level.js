@@ -54,18 +54,22 @@ export function levelGap(contentCefr, userLevel) {
   const mine = normalizeLevel(userLevel);
   // In CEFR steps (A1→A2 is 1), not ladder rungs.
   const delta = (BASE[c] - BASE[mine]) / 2;
-  if (delta === 0) return null;
 
+  // A match is reported too, not swallowed. Saying nothing when the video sits
+  // on the learner's level is indistinguishable from the feature being broken —
+  // and "did it even run?" is exactly the doubt this is meant to remove.
   const msg =
-    delta >= 2
-      ? `Este vídeo parece ${c} e você está em ${mine} — bem acima. Vale assistir mesmo assim: ligue a tradução sem culpa e mire na ideia geral, não em cada palavra.`
-      : delta === 1
-        ? `Este vídeo parece ${c}, um degrau acima do seu ${mine} — é a faixa onde mais se aprende. Se travar, a tradução está aí.`
-        : delta === -1
-          ? `Este vídeo parece ${c}, um pouco abaixo do seu ${mine} — bom para ganhar fluidez e ouvir sem esforço.`
-          : `Este vídeo parece ${c} e você está em ${mine} — deve soar fácil. Ótimo para relaxar, mas você avança mais com algo mais difícil.`;
+    delta === 0
+      ? `Este vídeo parece ${c}, o seu nível — bom lugar para estar.`
+      : delta >= 2
+        ? `Este vídeo parece ${c} e você está em ${mine} — bem acima. Vale assistir mesmo assim: ligue a tradução sem culpa e mire na ideia geral, não em cada palavra.`
+        : delta === 1
+          ? `Este vídeo parece ${c}, um degrau acima do seu ${mine} — é a faixa onde mais se aprende. Se travar, a tradução está aí.`
+          : delta === -1
+            ? `Este vídeo parece ${c}, um pouco abaixo do seu ${mine} — bom para ganhar fluidez e ouvir sem esforço.`
+            : `Este vídeo parece ${c} e você está em ${mine} — deve soar fácil. Ótimo para relaxar, mas você avança mais com algo mais difícil.`;
 
-  return { cefr: c, mine, delta, harder: delta > 0, msg };
+  return { cefr: c, mine, delta, harder: delta > 0, match: delta === 0, msg };
 }
 
 // Returns { cefr, prompt } — `prompt` is the string handed to the AI.

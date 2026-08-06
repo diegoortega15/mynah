@@ -399,6 +399,7 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
   const [level, setLevel] = useState<VideoLevel | null>(null);
+  const [levelBusy, setLevelBusy] = useState(false);
   const chan = useChannels(user.id);
   const [chanMsg, setChanMsg] = useState('');
   const [usedLocal, setUsedLocal] = useState(false); // the on-device fallback kicked in
@@ -481,10 +482,13 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
   // Judge the video's level in the background — never delays getting to the video.
   const askLevel = useCallback(
     async (id: number) => {
+      setLevelBusy(true);
       try {
         setLevel(await api.videoLevel(user.id, id));
       } catch {
         /* o aviso de nível é um extra: sem ele o vídeo funciona igual */
+      } finally {
+        setLevelBusy(false);
       }
     },
     [user.id]
@@ -783,11 +787,18 @@ function YoutubeTab({ user, onMarked }: { user: User; onMarked: () => void }) {
           </div>
           {chanMsg && <p className="muted small">{chanMsg}</p>}
 
-          {level?.gap && (
-            <p className={`level-note ${level.gap.harder ? 'harder' : 'easier'}`}>
+          {level?.gap ? (
+            <p
+              className={`level-note ${level.gap.match ? 'match' : level.gap.harder ? 'harder' : 'easier'}`}
+            >
               <strong>{level.gap.cefr}</strong> {level.gap.msg}
               {level.why && <span className="muted small"> — {level.why}</span>}
             </p>
+          ) : (
+            // Never leave this spot blank while thinking: an empty spot reads as
+            // "the feature is broken", which is the doubt this whole note exists
+            // to remove.
+            levelBusy && <p className="level-note muted small">⏳ Avaliando o nível deste vídeo…</p>
           )}
 
           <div className="yt-frame">

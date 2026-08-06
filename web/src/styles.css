@@ -529,6 +529,7 @@ input[type="range"] { width: 100%; margin-top: 6px; accent-color: var(--accent);
   font-size: 0.9rem;
 }
 .level-note.easier { border-left-color: var(--good); background: var(--good-tint-weak); }
+.level-note.match { border-left-color: var(--accent2); background: transparent; }
 
 .yt-foot { margin-top: 0.75rem; gap: 0.5rem; flex-wrap: wrap; }
 
