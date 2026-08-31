@@ -882,3 +882,30 @@ button.hm-cell { cursor: pointer; }
   .block-grid { grid-template-columns: 1fr; }
   .bubble { max-width: 88%; }
 }
+
+/* First-run wizard: profile → AI → voice → placement test */
+.onboard-wizard { width: 100%; max-width: 640px; }
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+}
+.wizard-steps li { color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
+.wizard-steps li.now { color: var(--text); font-weight: 600; }
+.wizard-steps li.done { color: var(--good); }
+.wz-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 0.75rem;
+}
+.wizard-steps li.now .wz-num { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.wizard-only-steps { padding-bottom: 0.75rem; margin-bottom: 0.75rem; }

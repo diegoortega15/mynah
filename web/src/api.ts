@@ -151,10 +151,10 @@ export const api = {
   deleteYoutubeVideo: (rowId: number, uid: number) =>
     req<Ok>(`/api/youtube-videos/${rowId}?uid=${uid}`, { method: 'DELETE' }),
   // Placement test: the server keeps the item bank and the answer key.
-  placementStep: (answers: PlacementAnswer[]) =>
+  placementStep: (answers: PlacementAnswer[], noAudio = false) =>
     req<PlacementStep | ({ done: true } & Omit<PlacementResult, 'id' | 'current' | 'differs'>)>(
       '/api/placement/step',
-      { method: 'POST', body: { answers } }
+      { method: 'POST', body: { answers, noAudio } }
     ),
   savePlacement: (uid: number, answers: PlacementAnswer[]) =>
     req<PlacementResult>(`/api/users/${uid}/placement`, { method: 'POST', body: { answers } }),

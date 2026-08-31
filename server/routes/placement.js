@@ -8,6 +8,9 @@ import { idParams, body } from '../lib/schemas.js';
 const MIN_EVIDENCE = 5;
 
 const ANSWERS = {
+  // The client reports whether this browser can actually narrate English. It
+  // cannot be inferred here: it depends on which voices the machine has.
+  noAudio: { type: 'boolean' },
   answers: {
     type: 'array',
     maxItems: 60,
@@ -28,7 +31,7 @@ export default async function placementRoutes(app) {
   // has answered so far, so a reload or a closed tab loses nothing but time.
   app.post('/api/placement/step', {
     schema: { body: body([], ANSWERS) },
-  }, (req) => nextStep(req.body?.answers ?? []));
+  }, (req) => nextStep(req.body?.answers ?? [], { noAudio: !!req.body?.noAudio }));
 
   // Store a finished test. The level is NOT changed here — the learner decides.
   app.post('/api/users/:id/placement', {

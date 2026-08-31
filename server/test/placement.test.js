@@ -111,6 +111,41 @@ describe('fluxo adaptativo', () => {
   });
 });
 
+describe('navegador sem voz em inglês', () => {
+  // Sem voz em inglês, narrar o bloco de escuta usaria uma voz portuguesa lendo
+  // inglês: o aluno responderia ruído e o teste reportaria um nível que nunca
+  // mediu. Melhor tirar o bloco e dizer isso do que inventar uma nota.
+  it('não faz nenhuma pergunta de escuta', () => {
+    const answers = [{ id: 'vocab', known: upTo('B1') }];
+    for (let i = 0; i < 40; i++) {
+      const step = nextStep(answers, { noAudio: true });
+      if (step.done) {
+        expect(step.blocks.listeningTotal).toBe(0);
+        expect(step.blocks.listening).toBeNull();
+        expect(step.blocks.clozeTotal).toBe(CLOZE_ITEMS);
+        return;
+      }
+      expect(step.item.block).not.toBe('listening');
+      answers.push(answerAs(CLOZE.find((it) => it.id === step.item.id), 'B1'));
+    }
+    throw new Error('o teste não terminou');
+  });
+
+  it('desconta os itens de escuta do total mostrado ao aluno', () => {
+    expect(nextStep([], { noAudio: true }).total).toBe(1 + CLOZE_ITEMS);
+    expect(nextStep([]).total).toBe(1 + LISTENING_ITEMS + CLOZE_ITEMS);
+  });
+
+  it('ainda dá um veredito, pelos blocos que sobraram', () => {
+    const answers = [{ id: 'vocab', known: upTo('B2') }];
+    let step;
+    for (let i = 0; i < 40 && !(step = nextStep(answers, { noAudio: true })).done; i++) {
+      answers.push(answerAs(CLOZE.find((it) => it.id === step.item.id), 'B2'));
+    }
+    expect(['B1', 'B2', 'C1']).toContain(step.cefr);
+  });
+});
+
 describe('resultado final', () => {
   // O teste só vale se discriminar: um A1 e um C1 não podem sair no mesmo lugar.
   it('separa alunos de níveis diferentes', () => {

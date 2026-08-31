@@ -83,26 +83,33 @@ export function scoreVocab(known = []) {
 }
 
 /** The next thing to ask, or the final result when the test is over. */
-export function nextStep(answers = []) {
+export function nextStep(answers = [], { noAudio = false } = {}) {
+  // A browser with no English voice would narrate the listening block with a
+  // Portuguese one — the learner would answer noise and the test would report a
+  // level it never measured. Dropping the block and saying so is honest; a made
+  // up listening score is not.
+  const listeningItems = noAudio ? 0 : LISTENING_ITEMS;
+  const total = 1 + listeningItems + CLOZE_ITEMS;
+
   const vocabAnswer = answers.find((a) => a.id === 'vocab');
   if (!vocabAnswer) {
     return {
       done: false,
       step: 1,
-      total: 1 + LISTENING_ITEMS + CLOZE_ITEMS,
+      total,
       item: { block: 'vocab', id: 'vocab', words: shuffled(VOCAB.map((v) => v.w)) },
     };
   }
 
   const lAnswers = answers.filter((a) => a.id.startsWith('l-'));
-  if (lAnswers.length < LISTENING_ITEMS) {
+  if (lAnswers.length < listeningItems) {
     const { idx, seen } = walk(LISTENING, lAnswers, LISTENING_ITEMS);
     const item = pickNear(LISTENING, idx, seen);
     if (item) {
       return {
         done: false,
         step: 2 + lAnswers.length,
-        total: 1 + LISTENING_ITEMS + CLOZE_ITEMS,
+        total,
         item: { block: 'listening', id: item.id, speak: item.speak, q: item.q, options: item.options },
       };
     }
@@ -115,8 +122,8 @@ export function nextStep(answers = []) {
     if (item) {
       return {
         done: false,
-        step: 2 + LISTENING_ITEMS + cAnswers.length,
-        total: 1 + LISTENING_ITEMS + CLOZE_ITEMS,
+        step: 2 + listeningItems + cAnswers.length,
+        total,
         item: { block: 'cloze', id: item.id, text: item.text, options: item.options },
       };
     }

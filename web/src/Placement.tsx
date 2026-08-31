@@ -23,7 +23,11 @@ export default function Placement({
   onApply: (level: string) => void;
   onClose: () => void;
 }) {
-  const { speak, stop } = useSpeech();
+  const { speak, stop, enVoices, ttsSupported } = useSpeech();
+  // No English voice means the listening block would be narrated by whatever
+  // voice exists — often a Portuguese one reading English. The server then
+  // drops that block instead of scoring noise.
+  const noAudio = !ttsSupported || enVoices.length === 0;
   const [answers, setAnswers] = useState<PlacementAnswer[]>([]);
   const [step, setStep] = useState<PlacementStep | null>(null);
   const [started, setStarted] = useState(false);
@@ -39,7 +43,7 @@ export default function Placement({
     setErr('');
     stop();
     try {
-      const s = await api.placementStep(next);
+      const s = await api.placementStep(next, noAudio);
       setAnswers(next);
       if (s.done) {
         setResult(await api.savePlacement(userId, next));
@@ -94,8 +98,10 @@ export default function Placement({
               : (b.vocab ?? '—')}
           </li>
           <li>
-            <strong>Ouvir e entender:</strong> {b.listening ?? '—'} ({b.listeningRight}/
-            {b.listeningTotal} certas)
+            <strong>Ouvir e entender:</strong>{' '}
+            {b.listeningTotal === 0
+              ? 'não avaliado — este navegador não tem voz em inglês instalada'
+              : `${b.listening} (${b.listeningRight}/${b.listeningTotal} certas)`}
           </li>
           <li>
             <strong>Completar a frase:</strong> {b.cloze ?? '—'} ({b.clozeRight}/{b.clozeTotal}{' '}
@@ -149,6 +155,13 @@ export default function Placement({
           entender, e frases para completar. As perguntas se ajustam conforme você responde — se
           acertar, ficam mais difíceis.
         </p>
+        {noAudio && (
+          <p className="tx-local-note">
+            ⚠️ Este navegador não tem voz em inglês instalada, então a parte de <strong>ouvir</strong>{' '}
+            fica de fora e o teste mede só vocabulário e gramática. Para o resultado valer mais,
+            configure uma voz antes (Chrome ou Edge trazem vozes em inglês).
+          </p>
+        )}
         <p className="muted small">
           <strong>Responda com sinceridade.</strong> O resultado não é uma nota: ele decide o
           inglês que a IA vai produzir pra você daqui em diante. Chutar para cima só torna o app
