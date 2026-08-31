@@ -23,6 +23,14 @@ const TARGET_FIELDS = [
 ];
 
 import { LEVELS } from './levels.js';
+const FOCUS_PRESETS = [
+  'trabalho, carreira e tecnologia',
+  'viagens e situações do dia a dia',
+  'escola, amigos e hobbies',
+  'faculdade e textos acadêmicos',
+  'filmes, séries e cultura pop',
+];
+const AVOID_PRESETS = ['violência', 'namoro e romance', 'bebida e drogas', 'política', 'religião'];
 const AVATARS = ['🧑', '👩', '👨', '🧕', '👧', '🦸', '🐨', '🦊', '🐼', '🦉', '🐯', '🐧'];
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -51,6 +59,9 @@ export default function Settings({
   const [level, setLevel] = useState(user.level);
   const [avatar, setAvatar] = useState(user.avatar);
   const [startDate, setStartDate] = useState(user.start_date);
+  const [age, setAge] = useState(user.age == null ? '' : String(user.age));
+  const [focus, setFocus] = useState(user.focus ?? '');
+  const [avoid, setAvoid] = useState(user.avoid_topics ?? '');
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [theme, setTheme] = useState<ThemePref>(getThemePref);
   const [targets, setTargets] = useState({ ...DEFAULT_TARGETS, ...(user.targets ?? {}) });
@@ -92,13 +103,27 @@ export default function Settings({
   }
 
   const dirty =
-    name !== user.name || level !== user.level || avatar !== user.avatar || startDate !== user.start_date;
+    name !== user.name ||
+    level !== user.level ||
+    avatar !== user.avatar ||
+    startDate !== user.start_date ||
+    age !== (user.age == null ? '' : String(user.age)) ||
+    focus !== (user.focus ?? '') ||
+    avoid !== (user.avoid_topics ?? '');
 
   async function save() {
     setBusy(true);
     setMsg('');
     try {
-      const updated = await api.updateUser(user.id, { name, level, avatar, start_date: startDate });
+      const updated = await api.updateUser(user.id, {
+        name,
+        level,
+        avatar,
+        start_date: startDate,
+        age: age.trim() === '' ? null : Number(age),
+        focus,
+        avoid_topics: avoid,
+      });
       onUpdated(updated);
       setMsg('✅ Perfil salvo.');
     } catch (e) {
@@ -174,6 +199,72 @@ export default function Settings({
           )}
         </div>
 
+        <h2>Sobre o conteúdo gerado</h2>
+        <p className="muted small">
+          Estes três campos entram em <strong>todas</strong> as chamadas de IA: diálogos, textos,
+          cards, tutor, roleplay e correções.
+        </p>
+
+        <label htmlFor="set-age">Idade</label>
+        <div className="row">
+          <input
+            id="set-age"
+            type="number"
+            min={3}
+            max={120}
+            value={age}
+            placeholder="opcional"
+            onChange={(e) => setAge(e.target.value)}
+            style={{ maxWidth: 120 }}
+          />
+          {Number(age) > 0 && Number(age) < 18 && (
+            <span className="muted small">
+              Menor de 18: o app já bloqueia sozinho temas adultos (violência, romance, bebida,
+              drogas, jogo), mesmo sem você listar nada abaixo.
+            </span>
+          )}
+        </div>
+
+        <label htmlFor="set-focus">Foco do conteúdo</label>
+        <input
+          id="set-focus"
+          value={focus}
+          placeholder="trabalho, carreira e tecnologia (padrão)"
+          onChange={(e) => setFocus(e.target.value)}
+        />
+        <div className="chips">
+          {FOCUS_PRESETS.map((f) => (
+            <button key={f} className={`chip ${focus === f ? 'sel' : ''}`} onClick={() => setFocus(f)}>
+              {f}
+            </button>
+          ))}
+        </div>
+
+        <label htmlFor="set-avoid">Temas a evitar</label>
+        <input
+          id="set-avoid"
+          value={avoid}
+          placeholder="separe por vírgula — ex: violência, política"
+          onChange={(e) => setAvoid(e.target.value)}
+        />
+        <div className="chips">
+          {AVOID_PRESETS.map((a) => (
+            <button
+              key={a}
+              className="chip"
+              onClick={() =>
+                setAvoid((v) => (v.toLowerCase().includes(a) ? v : [v, a].filter(Boolean).join(', ')))
+              }
+            >
+              + {a}
+            </button>
+          ))}
+        </div>
+        <p className="muted small">
+          ⚠️ Isso é uma <strong>instrução</strong> para a IA, não um filtro garantido: reduz muito a
+          chance de aparecer o que você listou, mas não elimina. E não alcança o YouTube — lá o vídeo
+          é escolhido por quem está usando.
+        </p>
         <label htmlFor="set-start">Início do plano (Dia 1)</label>
         <div className="row">
           <input
@@ -189,7 +280,16 @@ export default function Settings({
             Recomeçar hoje
           </button>
         </div>
-        <span className="muted small">Você está no dia {user.day}/90 · Fase {user.phase.n}.</span>
+        <span className="muted small">
+          Você está no dia {user.day}/90 · Fase {user.phase.n}.
+          {user.skippedDays > 0 && (
+            <>
+              {' '}O plano conta <strong>dias estudados</strong> ({user.studiedDays} até agora), não
+              dias de calendário — já se passaram {user.elapsedDays} dias desde o início. Pular não
+              te empurra para um conteúdo que você ainda não construiu.
+            </>
+          )}
+        </span>
 
         <div className="row end">
           {msg && <span className="small">{msg}</span>}

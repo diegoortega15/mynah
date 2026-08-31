@@ -24,8 +24,19 @@ export interface User {
   last_active: string | null;
   freezes: number;
   targets: Partial<Record<BlockKey, number>> | null;
+  /** Idade — impõe restrições de conteúdo apropriadas por si só. */
+  age: number | null;
+  /** Sobre o que o conteúdo deve ser (padrão: trabalho/carreira/tecnologia). */
+  focus: string | null;
+  /** Temas que a IA nunca deve escrever. */
+  avoid_topics: string | null;
   created_at?: string;
+  /** Dia do PLANO: conta dias estudados, não dias corridos. */
   day: number;
+  /** Dias de calendário desde o início — mostrado ao lado, para não esconder o tempo. */
+  elapsedDays: number;
+  studiedDays: number;
+  skippedDays: number;
   phase: Phase;
   todayFocus: string;
   nextMilestone: Milestone | null;

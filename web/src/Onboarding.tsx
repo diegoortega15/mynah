@@ -40,6 +40,7 @@ export default function Onboarding({
   const [step, setStep] = useState<Step>('profile');
   const [name, setName] = useState('');
   const [level, setLevel] = useState('B1');
+  const [age, setAge] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState<User | null>(null);
@@ -68,7 +69,15 @@ export default function Onboarding({
     setBusy(true);
     setError('');
     try {
-      setCreated(await api.createUser({ name: name.trim(), level }));
+      // A idade vai já na criação: um perfil de criança precisa nascer com as
+      // restrições de conteúdo ligadas, não depois que alguém lembrar.
+      setCreated(
+        await api.createUser({
+          name: name.trim(),
+          level,
+          ...(age.trim() ? { age: Number(age) } : {}),
+        })
+      );
       setStep('ai');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -119,6 +128,23 @@ export default function Onboarding({
             onChange={(e) => setName(e.target.value)}
             placeholder="Seu nome"
           />
+
+          <label htmlFor="ob-age">Idade (opcional)</label>
+          <input
+            id="ob-age"
+            type="number"
+            min={3}
+            max={120}
+            value={age}
+            placeholder="ex: 34"
+            onChange={(e) => setAge(e.target.value)}
+          />
+          {Number(age) > 0 && Number(age) < 18 && (
+            <p className="level-note match">
+              ✅ Perfil de menor de idade: o conteúdo gerado já sai sem temas adultos. Dá para
+              refinar os temas a evitar depois, no Perfil.
+            </p>
+          )}
 
           <span className="field-label" id="ob-level">Nível de inglês (CEFR)</span>
           <div className="level-grid" role="group" aria-labelledby="ob-level">

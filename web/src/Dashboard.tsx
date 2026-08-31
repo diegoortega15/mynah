@@ -99,6 +99,11 @@ export default function Dashboard({ user }: { user: User }) {
           </h1>
           <p className="muted">
             Dia <strong>{user.day}/90</strong> · Fase {user.phase.n} — {user.phase.name}
+            {user.skippedDays > 0 && (
+              <span className="muted small elapsed-note">
+                {' '}· {user.elapsedDays} dias desde o início
+              </span>
+            )}
           </p>
         </div>
         <div

@@ -1,5 +1,6 @@
 import { db } from '../db.js';
-import { today, daysBetween } from '../lib/srs.js';
+import { today } from '../lib/srs.js';
+import { planDay } from '../lib/planDay.js';
 import { idParams, body } from '../lib/schemas.js';
 import { createStarterDeck } from '../lib/starterDeck.js';
 import { levelTarget } from '../lib/level.js';
@@ -32,7 +33,7 @@ const MILESTONES = [
 
 // Enrich a raw user row with derived day/phase/focus/milestones.
 export function decorate(u) {
-  const dayNum = Math.min(90, daysBetween(u.start_date, today()) + 1);
+  const { day: dayNum, elapsed, studied, skipped } = planDay(u);
   const phase = phaseFor(dayNum);
   const dow = new Date(today() + 'T00:00:00').getDay();
   const nextMilestone = MILESTONES.find((m) => m.day >= dayNum) ?? null;
@@ -47,6 +48,9 @@ export function decorate(u) {
     ...rest,
     targets,
     day: dayNum,
+    elapsedDays: elapsed, // calendário, mostrado ao lado do dia do plano
+    studiedDays: studied,
+    skippedDays: skipped,
     phase,
     todayFocus: WEEK_FOCUS[dow],
     nextMilestone,
@@ -71,17 +75,18 @@ export default async function usersRoutes(app) {
       body: body(['name'], {
         name: { type: 'string', minLength: 1, maxLength: 60 },
         level: { type: 'string', maxLength: 30 },
+        age: { type: 'integer', minimum: 3, maximum: 120 },
         avatar: { type: 'string', maxLength: 8 },
       }),
     },
   }, (req, reply) => {
-    const { name, level = 'B1', avatar } = req.body ?? {};
+    const { name, level = 'B1', avatar, age } = req.body ?? {};
     if (!name || !name.trim()) return reply.code(400).send({ error: 'name required' });
     const count = db.prepare('SELECT COUNT(*) c FROM users').get().c;
     const av = avatar || AVATARS[count % AVATARS.length];
     const info = db
-      .prepare('INSERT INTO users (name, avatar, level, start_date) VALUES (?, ?, ?, ?)')
-      .run(name.trim(), av, level, today());
+      .prepare('INSERT INTO users (name, avatar, level, start_date, age) VALUES (?, ?, ?, ?, ?)')
+      .run(name.trim(), av, level, today(), Number.isInteger(age) ? age : null);
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
     // Every new profile starts with a static deck — first review works in
     // 2 minutes, no AI required.
@@ -98,6 +103,9 @@ export default async function usersRoutes(app) {
         level: { type: 'string', maxLength: 30 },
         avatar: { type: 'string', maxLength: 8 },
         start_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+        age: { type: ['integer', 'null'], minimum: 3, maximum: 120 },
+        focus: { type: 'string', maxLength: 200 },
+        avoid_topics: { type: 'string', maxLength: 200 },
         targets: {
           type: 'object',
           properties: {
@@ -114,13 +122,18 @@ export default async function usersRoutes(app) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!u) return reply.code(404).send({ error: 'user not found' });
 
-    const { name, avatar, level, start_date, targets } = req.body ?? {};
+    const { name, avatar, level, start_date, targets, age, focus, avoid_topics } = req.body ?? {};
     const fields = {};
     if (name && name.trim()) fields.name = name.trim();
     if (avatar) fields.avatar = avatar;
     if (level) fields.level = level;
     if (start_date && /^\d{4}-\d{2}-\d{2}$/.test(start_date)) fields.start_date = start_date;
     if (targets && typeof targets === 'object') fields.targets_json = JSON.stringify(targets);
+    // These three steer every AI prompt (lib/contentProfile.js). Empty string
+    // clears the field back to the default rather than storing a blank rule.
+    if (age !== undefined) fields.age = age === null ? null : Number(age);
+    if (focus !== undefined) fields.focus = String(focus).trim() || null;
+    if (avoid_topics !== undefined) fields.avoid_topics = String(avoid_topics).trim() || null;
 
     const keys = Object.keys(fields);
     if (keys.length) {

@@ -35,6 +35,9 @@ addColumnIfMissing('recordings', 'feedback_json', 'TEXT');
 
 addColumnIfMissing('users', 'freezes', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'targets_json', 'TEXT');
+addColumnIfMissing('users', 'age', 'INTEGER');
+addColumnIfMissing('users', 'focus', 'TEXT');
+addColumnIfMissing('users', 'avoid_topics', 'TEXT');
 addColumnIfMissing('dialogues', 'questions_json', 'TEXT');
 addColumnIfMissing('readings', 'questions_json', 'TEXT');
 // The CEFR each piece of generated content was written at — lets a quiz score

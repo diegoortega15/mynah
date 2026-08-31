@@ -70,11 +70,11 @@ type Ok = { ok: boolean };
 export const api = {
   listUsers: () => req<User[]>('/api/users'),
   getUser: (id: number | string) => req<User>(`/api/users/${id}`),
-  createUser: (body: { name: string; level?: string; avatar?: string }) =>
+  createUser: (body: { name: string; level?: string; avatar?: string; age?: number }) =>
     req<User>('/api/users', { method: 'POST', body }),
   updateUser: (
     id: number,
-    body: Partial<Pick<User, 'name' | 'avatar' | 'level' | 'start_date'>> & {
+    body: Partial<Pick<User, 'name' | 'avatar' | 'level' | 'start_date' | 'age' | 'focus' | 'avoid_topics'>> & {
       targets?: Partial<Record<BlockKey, number>>;
     }
   ) => req<User>(`/api/users/${id}`, { method: 'PATCH', body }),

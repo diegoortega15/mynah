@@ -5,6 +5,7 @@ import * as geminiCli from './providers/geminiCli.js';
 import * as openai from './providers/openai.js';
 import * as gemini from './providers/gemini.js';
 import * as ollama from './providers/ollama.js';
+import { ContentBlockedError, looksBlocked } from '../lib/aiError.js';
 
 // Route a chat request to the configured provider. messages: [{role, content}].
 // `cfgOverride` lets /config/test try a candidate config without persisting it.
@@ -51,8 +52,22 @@ export function extractJson(text) {
   return JSON.parse(t);
 }
 
-async function askJson(messages) {
-  return extractJson(await chat(messages));
+async function askJson(messages, cfg) {
+  const raw = await chat(messages, cfg);
+  let parsed;
+  try {
+    parsed = extractJson(raw);
+  } catch {
+    // Not JSON at all. A refusal in prose ("I can't create this…") is a blocked
+    // request, not a broken provider — telling them apart is the difference
+    // between "pick another theme" and "go check your AI setup".
+    if (looksBlocked(null, raw)) throw new ContentBlockedError(String(raw).slice(0, 300));
+    throw new Error('resposta da IA não é JSON');
+  }
+  if (looksBlocked(parsed, raw)) {
+    throw new ContentBlockedError(String(parsed.reason ?? parsed.error ?? '').slice(0, 300));
+  }
+  return parsed;
 }
 
 // Level handling. Callers pass the object from lib/level.js ({cefr, guidance});
@@ -61,9 +76,18 @@ async function askJson(messages) {
 // splicing the whole guidance inline would break the sentence being read.
 function lv(level) {
   if (level && typeof level === 'object' && level.cefr) {
-    return { inline: level.cefr, block: `\n\nLEVEL — ${level.cefr} (CEFR). ${level.guidance}` };
+    return {
+      inline: level.cefr,
+      // Who we are writing for. This used to be hardcoded as "Brazilian
+      // professional" in a dozen prompts; now it follows the profile, so the
+      // same app can serve a child without rewriting any of them.
+      audience: level.audience || 'a Brazilian English learner',
+      block:
+        `\n\nLEVEL — ${level.cefr} (CEFR). ${level.guidance}` +
+        (level.constraints ? `\n\n${level.constraints}` : ''),
+    };
   }
-  return { inline: String(level ?? 'B1'), block: '' };
+  return { inline: String(level ?? 'B1'), audience: 'a Brazilian English learner', block: '' };
 }
 
 // ── Vocabulary pack ──────────────────────────────────────────────────────────
@@ -73,16 +97,16 @@ export async function generatePack(theme, level = 'B1', count = 10) {
     {
       role: 'system',
       content:
-        'You are a business English tutor. Always answer with raw JSON only, no markdown fences, no comments.',
+        'You are an English tutor. Always answer with raw JSON only, no markdown fences, no comments.',
     },
     {
       role: 'user',
-      content: `Generate ${count} genuinely useful English phrases or collocations about the theme "${theme}" for a ${L.inline} Brazilian professional (meetings, emails, presentations, interviews).
+      content: `Generate ${count} genuinely useful English phrases or collocations about the theme "${theme}" for ${L.audience} at level ${L.inline}.
 
 Rules:
 - Each item is a whole phrase or collocation IN CONTEXT, never a single isolated word.
 - "pt" = natural Brazilian Portuguese translation.
-- "context" = one short natural English example sentence used at work.
+- "context" = one short natural English example sentence in a situation that fits the learner.
 
 Return ONLY a JSON array: [{"en":"...","pt":"...","context":"..."}]${L.block}`,
     },
@@ -117,13 +141,13 @@ export async function correctWriting(text, level = 'B1', recurring = []) {
     },
     {
       role: 'user',
-      content: `Correct the text from a ${L.inline} Brazilian professional (grammar, word choice, naturalness).${recurringNote}
+      content: `Correct the text from ${L.audience} at level ${L.inline} (grammar, word choice, naturalness).${recurringNote}
 
 Return ONLY this JSON:
 {
   "corrected": "full text with mistakes fixed, minimal changes",
   "errors": [{"original":"wrong bit","correction":"fixed bit","explanation":"short why, in Brazilian Portuguese","category":${ERROR_CATEGORIES}}],
-  "rewrite": "a more natural, professional native-sounding version",
+  "rewrite": "a more natural, native-sounding version",
   "comment": "one short encouraging note in Brazilian Portuguese"
 }
 If there are no real errors, return an empty "errors" array.
@@ -191,11 +215,11 @@ export async function generateDialogue(theme, level = 'B1') {
   const messages = [
     {
       role: 'system',
-      content: 'You write natural English business dialogues. Always answer with raw JSON only, no markdown.',
+      content: 'You write natural English dialogues. Always answer with raw JSON only, no markdown.',
     },
     {
       role: 'user',
-      content: `Create a short natural English business dialogue for a ${L.inline} learner about "${theme}". Two speakers A and B, 8 to 12 short realistic lines.
+      content: `Create a short natural English dialogue for ${L.audience} at level ${L.inline}, about "${theme}". Two speakers A and B, 8 to 12 short realistic lines.
 ${QUESTIONS_RULES}
 
 Return ONLY this JSON:
@@ -224,11 +248,11 @@ export async function surpriseDialogue(level = 'B1') {
   const messages = [
     {
       role: 'system',
-      content: 'You write natural English business dialogues. Always answer with raw JSON only, no markdown.',
+      content: 'You write natural English dialogues. Always answer with raw JSON only, no markdown.',
     },
     {
       role: 'user',
-      content: `Invent a fresh, interesting workplace scenario for a ${L.inline} English learner — vary it a lot (a negotiation, a daily stand-up, giving feedback, a client call, a job interview, small talk at the coffee machine, a project kickoff, handling a complaint, etc.). Then write the dialogue: two speakers A and B, 8 to 12 short realistic lines.
+      content: `Invent a fresh, interesting everyday scenario for ${L.audience} at level ${L.inline}, drawn from their stated interests — vary it a lot, and never repeat the same setup. Then write the dialogue: two speakers A and B, 8 to 12 short realistic lines.
 
 ${QUESTIONS_RULES}
 
@@ -298,7 +322,7 @@ export async function generateShadowing(level = 'B1', theme = '') {
     },
     {
       role: 'user',
-      content: `Generate 10 varied, natural English sentences a ${L.inline} professional would actually say at work${theme ? ` about "${theme}"` : ''}. Each 6–14 words, good spoken rhythm for shadowing. Vary the situations.
+      content: `Generate 10 varied, natural English sentences ${L.audience} at level ${L.inline} would actually say${theme ? ` about "${theme}"` : ''}. Each 6–14 words, good spoken rhythm for shadowing. Vary the situations.
 
 Return ONLY a JSON array: [{"en":"...","pt":"Brazilian Portuguese translation"}]${L.block}`,
     },
@@ -320,7 +344,7 @@ export async function generateReading(level = 'B1', theme = '') {
     },
     {
       role: 'user',
-      content: `Write a short, genuinely interesting text for a ${L.inline} Brazilian professional${theme ? ` about "${theme}"` : ' about work, career or technology (pick something fresh)'}. 180-250 words, 3-4 paragraphs, natural modern English. It can be a story, an opinion piece or practical advice — extensive reading works when the reader WANTS to keep reading.
+      content: `Write a short, genuinely interesting text for ${L.audience} at level ${L.inline}${theme ? ` about "${theme}"` : ' about something that fits their interests (pick something fresh)'}. 180-250 words, 3-4 paragraphs, natural modern English. It can be a story, an opinion piece or practical advice — extensive reading works when the reader WANTS to keep reading.
 
 ${QUESTIONS_RULES.replace('dialogue', 'text')}
 
@@ -358,11 +382,11 @@ export async function roleplayScenario(level = 'B1', theme = '') {
     {
       role: 'system',
       content:
-        'You design workplace roleplay exercises for English learners. Always answer with raw JSON only, no markdown.',
+        'You design roleplay exercises for English learners. Always answer with raw JSON only, no markdown.',
     },
     {
       role: 'user',
-      content: `Create a workplace roleplay scenario for a ${L.inline} Brazilian learner${theme ? ` about "${theme}"` : ''}. The learner plays themselves; the AI plays the other character. Give the learner a CONCRETE objective to achieve through conversation (negotiate a deadline, convince a manager, handle an unhappy client, ask for a raise...). Vary the situations.
+      content: `Create a roleplay scenario for ${L.audience} at level ${L.inline}${theme ? ` about "${theme}"` : ''}, set in a situation that fits their interests. The learner plays themselves; the AI plays the other character. Give the learner a CONCRETE objective to achieve through conversation. Vary the situations.
 
 Return ONLY this JSON:
 {"title":"short title (EN)","scenario":"2-3 sentence setup in Brazilian Portuguese","ai_role":"who the AI plays (EN, short)","objective":"the learner's goal in Brazilian Portuguese, specific and checkable","opening":"the AI character's first line (EN, natural spoken)"}${L.block}`,
@@ -380,7 +404,7 @@ Return ONLY this JSON:
 
 export async function roleplayTurn(history, { level = 'B1', scenario } = {}) {
   const L = lv(level);
-  const system = `You are playing a character in a workplace roleplay with a ${L.inline} Brazilian English learner.
+  const system = `You are playing a character in a roleplay with ${L.audience} at level ${L.inline}.
 Roleplay: ${scenario?.title ?? ''} — you play: ${scenario?.ai_role ?? 'a colleague'}. The learner's objective: ${scenario?.objective ?? ''}.
 Rules for every reply:
 - Stay firmly in character; natural spoken English, at most 2 short sentences per turn (real dialogue is brief — the learner should talk more than you).
@@ -400,7 +424,7 @@ export async function roleplayEvaluate(history, { level = 'B1', scenario } = {})
     {
       role: 'system',
       content:
-        'You are an English teacher evaluating a workplace roleplay. Always answer with raw JSON only, no markdown.',
+        'You are an English teacher evaluating a roleplay. Always answer with raw JSON only, no markdown.',
     },
     {
       role: 'user',
@@ -514,7 +538,7 @@ export async function tutorReply(history, { level = 'B1', focus = '', recurring 
   const recurringNote = recurring.length
     ? `\n- This learner's recurring weak spots: ${recurring.join(', ')}. Watch for those specifically.`
     : '';
-  const system = `You are Alex, a friendly and patient English conversation tutor talking with a ${L.inline} Brazilian learner who wants to improve spoken English for work${focus ? ` (today's focus: ${focus})` : ''}.
+  const system = `You are Alex, a friendly and patient English conversation tutor talking with ${L.audience} at level ${L.inline} who wants to improve their spoken English${focus ? ` (today's focus: ${focus})` : ''}.
 Rules for every reply:
 - BREVITY IS CRITICAL: at most 2 short sentences + 1 short follow-up question (under ~30 words total). Real spoken turns are short — the learner should talk more than you.
 - Never lecture, never list, never give more than one idea per turn.

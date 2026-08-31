@@ -2,6 +2,9 @@
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
+-- age / focus / avoid_topics feed every AI prompt (see lib/contentProfile.js):
+-- the focus steers the themes, and age plus avoid_topics keep a child's profile
+-- away from material meant for adults.
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
@@ -13,6 +16,9 @@ CREATE TABLE IF NOT EXISTS users (
   last_active   TEXT,                        -- YYYY-MM-DD
   freezes       INTEGER NOT NULL DEFAULT 0,  -- streak protections (earned weekly)
   targets_json  TEXT,                         -- per-user daily targets override
+  age           INTEGER,                     -- drives age-appropriate constraints in prompts
+  focus         TEXT,                        -- what the content should be about (default: work)
+  avoid_topics  TEXT,                        -- topics the AI must never write about
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -1,5 +1,6 @@
 import { db } from '../db.js';
-import { daysBetween, today } from './srs.js';
+import { planDay } from './planDay.js';
+import { contentProfile } from './contentProfile.js';
 
 // Dynamic difficulty (i+1): infer a CEFR target for AI generation from the
 // learner's actual performance, so the day-85 dialogue is harder than day-1's.
@@ -75,9 +76,12 @@ export function levelGap(contentCefr, userLevel) {
 // Returns { cefr, prompt } — `prompt` is the string handed to the AI.
 export function levelTarget(user) {
   const base = BASE[normalizeLevel(user.level)];
-  const day = clamp(daysBetween(user.start_date, today()) + 1, 1, 90);
-  // The 90-day plan raises the bar across phases — but only by one ladder rung
-  // per phase, so a beginner never jumps a whole CEFR band by the calendar.
+  // Days STUDIED, not days elapsed. Steering difficulty by the calendar meant
+  // someone who studied 9 days over 5 weeks got phase-2 English they had not
+  // built up to — the app punishing them for the gap instead of meeting them.
+  const { day } = planDay(user);
+  // The plan raises the bar across phases — but only by one ladder rung per
+  // phase, so a beginner never jumps a whole CEFR band.
   const phaseBump = day > 60 ? 2 : day > 30 ? 1 : 0;
 
   // Performance adjustment (−1, 0 or +1) from recent signals.
@@ -137,8 +141,15 @@ export function levelTarget(user) {
   // `cefr` goes inline in the prompt ("for a B1 learner"); `guidance` is a
   // separate instruction block appended at the end — mixing them inline would
   // break the sentence the model is reading.
+  // The content profile rides along here because THIS object is what reaches
+  // every generator. Making it a separate argument would mean 13 call sites
+  // that each have to remember it — and the one that forgets is a child seeing
+  // adult material.
+  const profile = contentProfile(user);
   return {
     cefr,
+    audience: profile.audience,
+    constraints: profile.constraints,
     guidance: `The learner is at this level. Every bit of English you produce (content, examples, corrections) must fit it: ${GUIDANCE[cefr]}. They must understand ~95% of it without a dictionary, with only a few slightly harder items (i+1). Never write above this level.`,
   };
 }
