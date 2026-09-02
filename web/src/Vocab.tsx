@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from './api.js';
+import { fmtFuture } from './format.js';
 import { useSpeech } from './useSpeech.js';
 import HelpTip from './HelpTip.jsx';
 import { useStats, useToday, useRefreshDay } from './queries.js';
@@ -11,6 +12,8 @@ const SUGGESTED = ['Reuniões', 'E-mails profissionais', 'Apresentações', 'Neg
 
 interface ReviewState {
   queue: ReviewCard[];
+  /** true = estudando adiantado (cards que ainda não venceram). */
+  ahead?: boolean;
   done: number;
 }
 
@@ -27,6 +30,26 @@ const MODE_INFO: Record<ReviewMode, { label: string; hint: string }> = {
   produce: { label: '🇧🇷→🇬🇧 Fale em inglês', hint: 'Como você diria isso em inglês? Fale em voz alta.' },
   listen: { label: '👂 Só de ouvido', hint: 'Ouça e entenda — sem ler.' },
 };
+
+// What each button MEANS, not how the card feels. The old labels invited the
+// wrong choice: someone who could not remember a card pressed "Difícil"
+// (which still pushes the card weeks away) instead of "De novo". In one real
+// session 30 of 50 cards were rated "hard" and none came back for over a week.
+const RATINGS = [
+  { key: 'again' as const, label: '❌ Errei', why: 'Não lembrei / errei' },
+  { key: 'hard' as const, label: '😓 Custou', why: 'Acertei, mas com esforço' },
+  { key: 'good' as const, label: '🙂 Bom', why: 'Lembrei sem drama' },
+  { key: 'easy' as const, label: '😎 Fácil', why: 'Imediato, sem pensar' },
+];
+
+/** "volta amanhã" / "volta em 12 dias" — o intervalo já em português. */
+function whenBack(days: number): string {
+  if (days <= 0) return 'volta ainda hoje';
+  if (days === 1) return 'volta amanhã';
+  if (days < 30) return `volta em ${days} dias`;
+  const m = Math.round(days / 30);
+  return m === 1 ? 'volta em cerca de 1 mês' : `volta em cerca de ${m} meses`;
+}
 
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'but', 'is', 'are',
@@ -100,16 +123,24 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
     }
   }
 
-  async function startReview() {
+  // `ahead` estuda o que ainda não venceu. O FSRS deixa dias vazios de
+  // propósito, e mandar quem quer estudar "voltar depois" mata o hábito que o
+  // app inteiro existe para construir. Custo: revisar cedo dá menos informação
+  // ao agendador, então é escolha explícita e nunca o padrão.
+  async function startReview(ahead = false) {
     if (starting) return;
     setStarting(true);
     try {
-      const cards = await api.getReview(user.id);
+      const cards = await api.getReview(user.id, ahead);
       if (!cards.length) {
-        setMsg('Nada pra revisar agora. Gere um pack ou volte depois. 🎉');
+        setMsg(
+          ahead
+            ? 'Você não tem nenhum card ainda. Gere um pack acima. 🎉'
+            : 'Nada vencendo agora — dá para adiantar os próximos ou gerar um pack.'
+        );
         return;
       }
-      setSession({ queue: cards, done: 0 });
+      setSession({ queue: cards, done: 0, ahead });
     } catch {
       setMsg('❌ Não consegui iniciar a revisão. Verifique a conexão e tente de novo.');
     } finally {
@@ -141,18 +172,42 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
     <div className="vocab">
       <div className="vocab-head">
         <h1>Vocabulário <HelpTip topic="vocab" /></h1>
-        <button className="primary" onClick={startReview} disabled={starting}>
-          {starting ? 'Carregando…' : '▶ Revisar agora'}
-        </button>
+        {stats?.due === 0 && stats.total > 0 ? (
+          <button
+            className="primary"
+            onClick={() => startReview(true)}
+            disabled={starting}
+            title="Revisa cards que ainda não venceram. Mantém o hábito, mas dá menos informação ao agendador do que esperar o dia certo."
+          >
+            {starting ? 'Carregando…' : '⏩ Adiantar próximos'}
+          </button>
+        ) : (
+          <button className="primary" onClick={() => startReview()} disabled={starting}>
+            {starting ? 'Carregando…' : '▶ Revisar agora'}
+          </button>
+        )}
       </div>
 
       {stats && (
         <div
           className={`vocab-status ${stats.due === 0 || stats.reviewedToday >= vocabTarget ? 'done' : ''}`}
         >
-          {stats.due === 0 || stats.reviewedToday >= vocabTarget
-            ? `✅ Revisão de hoje concluída — ${stats.reviewedToday} card(s) revisados hoje. Os próximos voltam nos dias certos.`
-            : `📚 ${stats.due} card(s) vencendo hoje · ${stats.reviewedToday}/${vocabTarget} já feitos.`}
+          {stats.due > 0 && stats.reviewedToday < vocabTarget ? (
+            `📚 ${stats.due} card(s) vencendo hoje · ${stats.reviewedToday}/${vocabTarget} já feitos.`
+          ) : stats.reviewedToday > 0 ? (
+            `✅ Revisão de hoje concluída — ${stats.reviewedToday} card(s) revisados.`
+          ) : (
+            // Sem nada agendado E sem nada revisado: dizer "concluída" seria
+            // mentira, e "volte depois" sem data foi exatamente o que gerou a
+            // dúvida "por que não tenho cards?".
+            <>
+              💤 <strong>Nada vencendo hoje</strong> — o agendador só traz cada card no dia certo.
+              {stats.nextDue && (
+                <> Os próximos <strong>{stats.nextCount} card(s)</strong> voltam{' '}
+                  <strong>{fmtFuture(stats.nextDue)}</strong>.</>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -327,14 +382,32 @@ function ReviewSession({
         )}
       </div>
 
+      {session.ahead && (
+        <p className="muted small">
+          ⏩ Estudando adiantado: estes cards ainda não venceram. Responda com sinceridade — o
+          agendador usa isso para recalcular as próximas datas.
+        </p>
+      )}
+
       {rateErr && <p className="error small">{rateErr}</p>}
 
       {revealed ? (
         <div className="rate-row">
-          <button className="r again" disabled={rating} onClick={() => rate('again')}>De novo</button>
-          <button className="r hard" disabled={rating} onClick={() => rate('hard')}>Difícil</button>
-          <button className="r good" disabled={rating} onClick={() => rate('good')}>Bom</button>
-          <button className="r easy" disabled={rating} onClick={() => rate('easy')}>Fácil</button>
+          {RATINGS.map((r) => {
+            const days = card.preview?.[r.key];
+            return (
+              <button
+                key={r.key}
+                className={`r ${r.key}`}
+                disabled={rating}
+                // Tooltip: o que o botão quer dizer E quando o card volta.
+                title={days === undefined ? r.why : `${r.why} — ${whenBack(days)}`}
+                onClick={() => rate(r.key)}
+              >
+                {r.label}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <button className="primary wide" onClick={() => setRevealed(true)}>

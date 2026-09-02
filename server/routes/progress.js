@@ -105,9 +105,45 @@ export function setVocabProgress(userId, { reviewedToday, due }) {
   return writeBlock(userId, 'vocab', { done, count: reviewedToday, info });
 }
 
+/**
+ * Cards waiting for this learner today.
+ */
+function dueCount(userId) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) c FROM cards c JOIN phrases p ON p.id = c.phrase_id
+         JOIN decks d ON d.id = p.deck_id WHERE d.user_id = ? AND c.due_date <= ?`
+    )
+    .get(userId, today()).c;
+}
+
+/**
+ * FSRS legitimately schedules nothing on some days. The "nothing due counts as
+ * done" rule existed, but only fired inside a review submission — which needs a
+ * card to review. On an empty day the block could never close, so the day never
+ * completed and the streak broke through no fault of the learner.
+ *
+ * Granting it is marked `auto`, because it is the app conceding the block, not
+ * the learner earning it: planDay() must not count "opened the app" as a day of
+ * study.
+ */
+function grantVocabIfNothingDue(userId) {
+  const row = getSession(userId);
+  const blocks = parseBlocks(row);
+  if (blocks.vocab?.done) return row;
+  if (dueCount(userId) > 0) return row;
+  writeBlock(userId, 'vocab', {
+    done: true,
+    auto: true,
+    count: blocks.vocab?.count ?? 0,
+    info: 'Revisão em dia',
+  });
+  return getSession(userId);
+}
+
 export default async function progressRoutes(app) {
   // Today's per-block progress for a user.
-  app.get('/api/users/:id/today', (req) => shape(getSession(req.params.id)));
+  app.get('/api/users/:id/today', (req) => shape(grantVocabIfNothingDue(req.params.id)));
 
   // Register one action in a block. Body: { block } (listen | speak | write).
   app.post('/api/users/:id/progress', {

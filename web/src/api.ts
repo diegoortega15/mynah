@@ -98,7 +98,9 @@ export const api = {
   deleteCard: (cardId: number, uid: number) =>
     req<Ok>(`/api/cards/${cardId}?uid=${uid}`, { method: 'DELETE' }),
 
-  getReview: (uid: number) => req<ReviewCard[]>(`/api/users/${uid}/review`),
+  /** ahead: FSRS deixa dias vazios de propósito; isso serve o que vem a seguir. */
+  getReview: (uid: number, ahead = false) =>
+    req<ReviewCard[]>(`/api/users/${uid}/review${ahead ? '?ahead=1' : ''}`),
   getStats: (uid: number) => req<Stats>(`/api/users/${uid}/stats`),
 
   // Daily progress (4 blocks)

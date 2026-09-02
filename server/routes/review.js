@@ -5,22 +5,39 @@ import { ownerOf, requireOwner } from '../lib/ownership.js';
 import { body } from '../lib/schemas.js';
 
 export default async function reviewRoutes(app) {
-  // Cards due today for a user (new + due), with phrase text.
+  // Cards due today (new + due), with phrase text. `ahead=1` ignores the due
+  // date and serves what comes next: FSRS legitimately leaves some days empty,
+  // and a learner who wants their daily hour should not be told to go away.
   app.get('/api/users/:id/review', (req) => {
     const t = today();
-    return db
+    const ahead = req.query?.ahead === '1' || req.query?.ahead === 1;
+    const rows = db
       .prepare(
         `SELECT c.id AS card_id, c.state, c.reps, c.due_date,
+                c.stability, c.difficulty, c.lapses, c.interval_days, c.last_review, c.ease,
                 p.text_en, p.translation_pt, p.context,
                 d.name AS deck_name
            FROM cards c
            JOIN phrases p ON p.id = c.phrase_id
            JOIN decks d   ON d.id = p.deck_id
-          WHERE d.user_id = ? AND c.due_date <= ?
+          WHERE d.user_id = ?${ahead ? '' : ' AND c.due_date <= ?'}
           ORDER BY (c.state = 'new') DESC, c.due_date ASC
-          LIMIT 100`
+          LIMIT ${ahead ? 20 : 100}`
       )
-      .all(req.params.id, t);
+      .all(...(ahead ? [req.params.id] : [req.params.id, t]));
+
+    // What each button would do to THIS card. Anki shows this and it is the
+    // only way the choice is honest: "Difícil" on an old card can still mean
+    // two weeks, which is not what the word suggests.
+    return rows.map((c) => ({
+      ...c,
+      preview: {
+        again: schedule(c, 'again').interval_days,
+        hard: schedule(c, 'hard').interval_days,
+        good: schedule(c, 'good').interval_days,
+        easy: schedule(c, 'easy').interval_days,
+      },
+    }));
   });
 
   // Study stats for the dashboard.
@@ -47,7 +64,16 @@ export default async function reviewRoutes(app) {
           WHERE d.user_id = ? AND date(r.reviewed_at, 'localtime') = ?`
       )
       .get(uid, t).c;
-    return { due, total, reviewedToday };
+    // When the queue is empty, "come back later" is useless without a date.
+    const next = db
+      .prepare(
+        `SELECT c.due_date d, COUNT(*) n FROM cards c JOIN phrases p ON p.id = c.phrase_id
+           JOIN decks dk ON dk.id = p.deck_id
+          WHERE dk.user_id = ? AND c.due_date > ?
+          GROUP BY c.due_date ORDER BY c.due_date LIMIT 1`
+      )
+      .get(uid, t);
+    return { due, total, reviewedToday, nextDue: next?.d ?? null, nextCount: next?.n ?? 0 };
   });
 
   // Submit a review for one card (owner only — a review writes to the owner's

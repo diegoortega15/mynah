@@ -70,11 +70,16 @@ export interface ReviewCard {
   translation_pt: string;
   context: string;
   deck_name: string;
+  /** Quantos dias cada nota adiaria ESTE card — mostrado no tooltip do botão. */
+  preview?: Record<Rating, number>;
 }
 export interface Stats {
   due: number;
   total: number;
   reviewedToday: number;
+  /** Próxima data com cards, quando a fila de hoje está vazia. */
+  nextDue?: string | null;
+  nextCount?: number;
 }
 
 export interface DialogueLine {

@@ -4,6 +4,26 @@ import { today, daysBetween } from './srs.js';
 export const PLAN_LENGTH = 90;
 
 /**
+ * Did the learner actually do something on this day?
+ *
+ * Two traps here. A block is stored as an OBJECT, so a naive `.some(Boolean)`
+ * over the values is always true — it would count any day the app merely wrote
+ * a row. And the vocab block can be granted automatically on a day FSRS left
+ * empty (`auto`), which is the app conceding the block, not work being done.
+ */
+function hasRealWork(json) {
+  let blocks;
+  try {
+    blocks = JSON.parse(json || '{}');
+  } catch {
+    return false;
+  }
+  return Object.values(blocks).some(
+    (b) => b && !b.auto && (b.done === true || Number(b.count) > 0)
+  );
+}
+
+/**
  * Where the learner actually is in the 90-day plan.
  *
  * This used to be the calendar: `daysBetween(start_date, today) + 1`. That is
@@ -13,10 +33,10 @@ export const PLAN_LENGTH = 90;
  * they had built up to. The calendar measured how long they had owned the app,
  * not how much of the plan they had done.
  *
- * So `day` counts days with real work (at least one block finished) and
- * `elapsed` keeps the calendar visible next to it: one answers "how much of the
- * plan have I done", the other "how long has this been going on". Both matter,
- * and neither should be hidden behind a setting.
+ * So `day` counts days with real work and `elapsed` keeps the calendar visible
+ * next to it: one answers "how much of the plan have I done", the other "how
+ * long has this been going on". Both matter, and neither should be hidden
+ * behind a setting.
  */
 export function planDay(user) {
   const t = today();
@@ -27,13 +47,7 @@ export function planDay(user) {
   const rows = db
     .prepare('SELECT blocks_done_json FROM sessions WHERE user_id = ? AND date < ?')
     .all(user.id, t);
-  const studied = rows.filter((r) => {
-    try {
-      return Object.values(JSON.parse(r.blocks_done_json || '{}')).some(Boolean);
-    } catch {
-      return false;
-    }
-  }).length;
+  const studied = rows.filter((r) => hasRealWork(r.blocks_done_json)).length;
 
   // Today is always the next day of the plan, whether or not it has been
   // started — "hoje é o dia 14" reads the same before and after you sit down.
