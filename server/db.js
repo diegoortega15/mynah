@@ -62,6 +62,8 @@ addColumnIfMissing('cards', 'stability', 'REAL');
 addColumnIfMissing('cards', 'difficulty', 'REAL');
 addColumnIfMissing('cards', 'lapses', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('cards', 'last_review', 'TEXT');
+addColumnIfMissing('cards', 'paused_reason', 'TEXT');
+addColumnIfMissing('cards', 'paused_at', 'TEXT');
 // Approximate FSRS memory for cards that already have SM-2 history:
 // stability ≈ current interval (≥1 day); difficulty maps ease 2.5→5, 1.3→~9.8
 // (clamped 1..10). New cards stay NULL and start fresh on first review.

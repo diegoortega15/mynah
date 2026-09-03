@@ -3,6 +3,7 @@ import { schedule, dateAfter, today } from '../lib/srs.js';
 import { setVocabProgress } from './progress.js';
 import { ownerOf, requireOwner } from '../lib/ownership.js';
 import { body } from '../lib/schemas.js';
+import { pauseAfterReview } from '../lib/cardLifecycle.js';
 
 export default async function reviewRoutes(app) {
   // Cards due today (new + due), with phrase text. `ahead=1` ignores the due
@@ -20,7 +21,7 @@ export default async function reviewRoutes(app) {
            FROM cards c
            JOIN phrases p ON p.id = c.phrase_id
            JOIN decks d   ON d.id = p.deck_id
-          WHERE d.user_id = ?${ahead ? '' : ' AND c.due_date <= ?'}
+          WHERE d.user_id = ? AND c.paused_reason IS NULL${ahead ? '' : ' AND c.due_date <= ?'}
           ORDER BY (c.state = 'new') DESC, c.due_date ASC
           LIMIT ${ahead ? 20 : 100}`
       )
@@ -48,7 +49,7 @@ export default async function reviewRoutes(app) {
       .prepare(
         `SELECT COUNT(*) c FROM cards c JOIN phrases p ON p.id = c.phrase_id
            JOIN decks d ON d.id = p.deck_id
-          WHERE d.user_id = ? AND c.due_date <= ?`
+          WHERE d.user_id = ? AND c.paused_reason IS NULL AND c.due_date <= ?`
       )
       .get(uid, t).c;
     const total = db
@@ -69,7 +70,7 @@ export default async function reviewRoutes(app) {
       .prepare(
         `SELECT c.due_date d, COUNT(*) n FROM cards c JOIN phrases p ON p.id = c.phrase_id
            JOIN decks dk ON dk.id = p.deck_id
-          WHERE dk.user_id = ? AND c.due_date > ?
+          WHERE dk.user_id = ? AND c.paused_reason IS NULL AND c.due_date > ?
           GROUP BY c.due_date ORDER BY c.due_date LIMIT 1`
       )
       .get(uid, t);
@@ -94,6 +95,7 @@ export default async function reviewRoutes(app) {
 
     const next = schedule(card, rating);
     const dueDate = dateAfter(next.interval_days);
+    const pause = pauseAfterReview(next, rating);
 
     // One transaction: the card update, the review log and the daily-progress
     // mark land together or not at all.
@@ -106,6 +108,12 @@ export default async function reviewRoutes(app) {
         next.stability, next.difficulty, next.lapses, next.last_review, card.id
       );
       db.prepare('INSERT INTO reviews (card_id, rating) VALUES (?, ?)').run(card.id, rating);
+
+      // Does this review take the card out of the queue? (leech / mastered)
+      if (pause) {
+        db.prepare('UPDATE cards SET paused_reason = ?, paused_at = ? WHERE id = ?')
+          .run(pause.reason, today(), card.id);
+      }
 
       // Auto-mark the daily vocabulary block: done at the target (or when nothing is due).
       const owner = db
@@ -126,7 +134,8 @@ export default async function reviewRoutes(app) {
         const due = db
           .prepare(
             `SELECT COUNT(*) c FROM cards c JOIN phrases p ON p.id = c.phrase_id
-               JOIN decks d ON d.id = p.deck_id WHERE d.user_id = ? AND c.due_date <= ?`
+               JOIN decks d ON d.id = p.deck_id
+              WHERE d.user_id = ? AND c.paused_reason IS NULL AND c.due_date <= ?`
           )
           .get(owner.user_id, t).c;
         setVocabProgress(owner.user_id, { reviewedToday, due });
@@ -134,6 +143,55 @@ export default async function reviewRoutes(app) {
     });
     tx();
 
-    return { ...next, due_date: dueDate };
+    return { ...next, due_date: dueDate, paused: pause?.reason ?? null };
+  });
+
+  // Cards that left the queue, so they are visible instead of silently gone.
+  app.get('/api/users/:id/paused-cards', (req) =>
+    db
+      .prepare(
+        `SELECT c.id AS card_id, c.paused_reason, c.paused_at, c.lapses, c.interval_days,
+                p.text_en, p.translation_pt, d.name AS deck_name
+           FROM cards c JOIN phrases p ON p.id = c.phrase_id JOIN decks d ON d.id = p.deck_id
+          WHERE d.user_id = ? AND c.paused_reason IS NOT NULL
+          ORDER BY c.paused_at DESC, c.id DESC`
+      )
+      .all(req.params.id)
+  );
+
+  // Put one back in rotation. A leech comes back due today with its failure
+  // count reset — otherwise it would pause again on the very next mistake.
+  app.post('/api/cards/:cardId/resume', {
+    schema: { params: { type: 'object', required: ['cardId'], properties: { cardId: { type: 'integer' } } } },
+  }, (req, reply) => {
+    if (!requireOwner(reply, ownerOf.card(req.params.cardId), req.query.uid)) return;
+    const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(req.params.cardId);
+    if (!card) return reply.code(404).send({ error: 'card not found' });
+    const wasLeech = card.paused_reason === 'leech';
+    db.prepare(
+      `UPDATE cards SET paused_reason = NULL, paused_at = NULL
+         ${wasLeech ? ', lapses = 0, due_date = ?' : ''} WHERE id = ?`
+    ).run(...(wasLeech ? [today(), card.id] : [card.id]));
+    return { ok: true };
+  });
+
+  // Review load for the next two weeks: a queue you cannot see coming is a
+  // queue that ambushes you with 9 cards on a Thursday.
+  app.get('/api/users/:id/load', (req) => {
+    const rows = db
+      .prepare(
+        `SELECT c.due_date d, COUNT(*) n FROM cards c JOIN phrases p ON p.id = c.phrase_id
+           JOIN decks dk ON dk.id = p.deck_id
+          WHERE dk.user_id = ? AND c.paused_reason IS NULL AND c.due_date <= date(?, '+13 day')
+          GROUP BY c.due_date`
+      )
+      .all(req.params.id, today());
+    const byDate = new Map(rows.map((r) => [r.d, r.n]));
+    // Overdue cards all land on "today" — that is when the learner sees them.
+    const overdue = rows.filter((r) => r.d < today()).reduce((a, r) => a + r.n, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const date = dateAfter(i);
+      return { date, count: (byDate.get(date) ?? 0) + (i === 0 ? overdue : 0) };
+    });
   });
 }

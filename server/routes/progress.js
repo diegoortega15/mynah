@@ -112,7 +112,8 @@ function dueCount(userId) {
   return db
     .prepare(
       `SELECT COUNT(*) c FROM cards c JOIN phrases p ON p.id = c.phrase_id
-         JOIN decks d ON d.id = p.deck_id WHERE d.user_id = ? AND c.due_date <= ?`
+         JOIN decks d ON d.id = p.deck_id
+          WHERE d.user_id = ? AND c.paused_reason IS NULL AND c.due_date <= ?`
     )
     .get(userId, today()).c;
 }

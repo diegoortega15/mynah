@@ -73,6 +73,24 @@ export interface ReviewCard {
   /** Quantos dias cada nota adiaria ESTE card — mostrado no tooltip do botão. */
   preview?: Record<Rating, number>;
 }
+/** Um card que saiu da fila de revisão, e por quê. */
+export interface PausedCard {
+  card_id: number;
+  paused_reason: 'leech' | 'mastered';
+  paused_at: string;
+  lapses: number;
+  interval_days: number;
+  text_en: string;
+  translation_pt: string;
+  deck_name: string;
+}
+
+/** Quantos cards vencem em cada um dos próximos 14 dias. */
+export interface LoadDay {
+  date: string;
+  count: number;
+}
+
 export interface Stats {
   due: number;
   total: number;

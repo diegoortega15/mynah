@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from './api.js';
 import { fmtFuture } from './format.js';
+import { LoadChart, PausedCards } from './VocabQueue.jsx';
 import { useSpeech } from './useSpeech.js';
 import HelpTip from './HelpTip.jsx';
 import { useStats, useToday, useRefreshDay } from './queries.js';
@@ -236,6 +237,9 @@ export default function Vocab({ user, onProgress }: { user: User; onProgress?: (
         </div>
         {msg && <p className="msg">{msg}</p>}
       </section>
+
+      <LoadChart uid={user.id} />
+      <PausedCards uid={user.id} onChange={() => refreshDay()} />
 
       <section className="card">
         <h2>Seus baralhos · {totalCards} cards</h2>

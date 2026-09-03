@@ -51,7 +51,12 @@ CREATE TABLE IF NOT EXISTS cards (
   stability     REAL,
   difficulty    REAL,
   lapses        INTEGER NOT NULL DEFAULT 0,
-  last_review   TEXT                          -- YYYY-MM-DD
+  last_review   TEXT,                         -- YYYY-MM-DD
+  -- Out of the review queue, and why. NULL = active. See lib/cardLifecycle.js:
+  -- 'leech'    = failed too many times; insisting wastes the learner's hour
+  -- 'mastered' = interval grew past the plan's horizon; it has been learned
+  paused_reason TEXT,
+  paused_at     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS reviews (

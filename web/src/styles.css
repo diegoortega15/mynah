@@ -909,3 +909,47 @@ button.hm-cell { cursor: pointer; }
 }
 .wizard-steps li.now .wz-num { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .wizard-only-steps { padding-bottom: 0.75rem; margin-bottom: 0.75rem; }
+
+/* Review load for the next two weeks */
+.load-chart {
+  list-style: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 90px;
+  padding: 0;
+  margin: 0.75rem 0 0;
+}
+.load-chart li {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 2px;
+}
+.load-bar {
+  width: 100%;
+  min-height: 2px;
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+}
+.load-chart li:first-child .load-bar { background: var(--accent2); }
+.load-n { font-size: 0.7rem; color: var(--muted); }
+.load-d { font-size: 0.65rem; }
+
+/* Cards out of the queue (leech / mastered) */
+.paused-list { list-style: none; padding: 0; margin: 0.5rem 0 1rem; display: grid; gap: 0.5rem; }
+.paused-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+}
+.paused-row .en { margin: 0; font-weight: 600; }
+.paused-row p { margin: 0; }

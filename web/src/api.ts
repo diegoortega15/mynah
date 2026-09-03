@@ -17,6 +17,8 @@ import type {
   TutorMessage,
   TranscriptChunk,
   SavedYoutubeVideo,
+  PausedCard,
+  LoadDay,
   YoutubeVideoData,
   VideoLevel,
   Channel,
@@ -102,6 +104,10 @@ export const api = {
   getReview: (uid: number, ahead = false) =>
     req<ReviewCard[]>(`/api/users/${uid}/review${ahead ? '?ahead=1' : ''}`),
   getStats: (uid: number) => req<Stats>(`/api/users/${uid}/stats`),
+  pausedCards: (uid: number) => req<PausedCard[]>(`/api/users/${uid}/paused-cards`),
+  resumeCard: (cardId: number, uid: number) =>
+    req<Ok>(`/api/cards/${cardId}/resume?uid=${uid}`, { method: 'POST', body: {} }),
+  reviewLoad: (uid: number) => req<LoadDay[]>(`/api/users/${uid}/load`),
 
   // Daily progress (4 blocks)
   today: (uid: number) => req<Today>(`/api/users/${uid}/today`),
